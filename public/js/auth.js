@@ -63,22 +63,24 @@ const FRIENDLY = {
 const friendly = (e) => { const err = new Error(FRIENDLY[e.code] || e.message || "Gagal"); err.code = e.code; return err; };
 
 async function firebaseAuth() {
-  const [{ initializeApp, getApps }, a] = await Promise.all([
+  const [{ initializeApp, getApps }, a, fs] = await Promise.all([
     import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"),
     import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"),
+    import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"),
   ]);
   const app = getApps()[0] || initializeApp(firebaseConfig);
   const auth = a.getAuth(app);
   const { GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
     signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword,
     createUserWithEmailAndPassword, updateProfile, signOut } = a;
+  const { getFirestore, doc, getDoc, setDoc } = fs;
+  const db = getFirestore(app);
 
   // selesaikan login Google via redirect (untuk mobile/popup diblokir)
   getRedirectResult(auth).catch(() => {});
 
   let cur = null;
-  const map = (u) => u ? { uid: u.uid, name: u.displayName || (u.isAnonymous ? "Tamu" : (u.email || "").split("@")[0]),
-    email: u.email, anon: u.isAnonymous, role: localStorage.getItem("role_" + u.uid) || "pelanggan" } : null;
+  const nameOf = (u) => u.displayName || (u.isAnonymous ? "Tamu" : (u.email || "").split("@")[0]);
 
   const POPUP_FAIL = ["auth/popup-blocked", "auth/operation-not-supported-in-this-environment",
     "auth/cancelled-popup-request", "auth/popup-closed-by-user"];
@@ -86,7 +88,24 @@ async function firebaseAuth() {
   return {
     mode: "firebase",
     current: () => cur,
-    onChange: (cb) => onAuthStateChanged(auth, (u) => { cur = map(u); cb(cur); }),
+    onChange: (cb) => onAuthStateChanged(auth, async (u) => {
+      if (!u) { cur = null; cb(null); return; }
+      // Sinkron profil fire-and-forget (TANPA role/wallet — dilindungi rules).
+      // JANGAN di-await: setDoc menggantung saat offline dan akan mem-blok login.
+      setDoc(doc(db, "users", u.uid), { name: u.displayName || null, email: u.email || null }, { merge: true })
+        .catch((e) => console.warn("Sinkron profil gagal:", e));
+      // Baca role NYATA dari Firestore, dengan batas waktu 4 dtk agar offline tetap masuk sebagai 'pelanggan'.
+      let role = "pelanggan";
+      try {
+        const snap = await Promise.race([
+          getDoc(doc(db, "users", u.uid)),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 4000)),
+        ]);
+        role = (snap.exists() && snap.data().role) || "pelanggan";
+      } catch (e) { console.warn("Baca role gagal:", e); }
+      cur = { uid: u.uid, name: nameOf(u), email: u.email, anon: u.isAnonymous, role };
+      cb(cur);
+    }),
     async loginGoogle() {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
@@ -103,7 +122,7 @@ async function firebaseAuth() {
     },
     async loginAnon() { try { await signInAnonymously(auth); } catch (err) { throw friendly(err); } },
     logout: () => signOut(auth),
-    setRole(role) { if (cur) { localStorage.setItem("role_" + cur.uid, role); cur.role = role; } },
+    setRole() { console.warn("setRole diabaikan: role diatur admin via Firestore (users/{uid}.role)."); },
   };
 }
 

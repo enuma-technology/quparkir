@@ -98,6 +98,8 @@ async function main() {
   if (!location.hash) location.hash = "#/home";
   startRouter();
   updateChrome();
+
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
 main();

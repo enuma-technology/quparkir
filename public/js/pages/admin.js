@@ -1,6 +1,7 @@
 import { h, $, rupiah, toast, modal } from "../util.js";
 import { DB } from "../data.js";
 import { pageHeader } from "../parts.js";
+import { renderQR } from "../qr.js";
 
 export default async function adminPage(view) {
   const statEl = h(".stats");
@@ -28,6 +29,16 @@ export default async function adminPage(view) {
 
   const paintLocs = () => {
     locEl.innerHTML = "";
+    if (!locs.length) {
+      // bootstrap produksi: koleksi kosong → admin memuat 6 lokasi awal (lolos rules admin)
+      locEl.append(h(".empty", {}, [h(".ic", { text: "🅿️" }),
+        h("p", { text: "Belum ada kantong parkir." }),
+        h("button.btn", { style: "margin-top:12px", onclick: async () => {
+          try { await DB.locations.seed(); toast("6 lokasi awal dimuat", "ok"); }
+          catch (e) { toast("Gagal memuat: " + e.message, "err"); }
+        } }, "🌱 Muat 6 lokasi awal (Surakarta)")]));
+      return;
+    }
     locs.forEach(l => {
       const cap = l.capMotor + l.capCar, occ = l.occMotor + l.occCar, pct = Math.round((occ / cap) * 100);
       locEl.append(h(".li", {}, [
@@ -37,9 +48,18 @@ export default async function adminPage(view) {
           h(".s", { text: "Terisi " + occ + " / " + cap + " (" + pct + "%)" }),
           h(".bar", {}, [h("i" + (pct >= 95 ? ".full" : ""), { style: "width:" + pct + "%" })]),
         ]),
+        h("button.btn.sm.ghost", { style: "margin-right:6px", onclick: () => showQR(l) }, "QR"),
         h("button.btn.sm", { onclick: () => editCap(l) }, "Kapasitas"),
       ]));
     });
+  };
+
+  const showQR = (l) => {
+    const qrEl = h(".qrbox");
+    renderQR(qrEl, "QP-LOC:" + l.id, 200);
+    modal("QR Lokasi — " + l.name, h("div", { style: "text-align:center" }, [qrEl,
+      h("p.muted", { style: "margin-top:10px", html: "<small>Cetak &amp; pasang di kantong parkir. Pelanggan scan untuk check-in.</small>" }),
+    ]));
   };
 
   const editCap = (l) => {
@@ -48,7 +68,12 @@ export default async function adminPage(view) {
     modal("Kapasitas — " + l.name, h("div", {}, [
       h("label.field", {}, [h("span", { text: "Slot Motor" }), m]),
       h("label.field", {}, [h("span", { text: "Slot Mobil" }), c]),
-      h("button.btn", { onclick: async () => { await DB.locations.update(l.id, { capMotor: +m.value, capCar: +c.value }); $("#modalHost").innerHTML = ""; toast("Kapasitas diperbarui", "ok"); } }, "Simpan"),
+      h("button.btn", { onclick: async () => {
+        const vm = Number(m.value), vc = Number(c.value);
+        if (!Number.isInteger(vm) || !Number.isInteger(vc) || vm < 1 || vc < 1) return toast("Kapasitas harus bilangan bulat minimal 1", "err");
+        if (vm < l.occMotor || vc < l.occCar) return toast("Kapasitas tidak boleh di bawah keterisian saat ini", "err");
+        await DB.locations.update(l.id, { capMotor: vm, capCar: vc }); $("#modalHost").innerHTML = ""; toast("Kapasitas diperbarui", "ok");
+      } }, "Simpan"),
     ]));
   };
 

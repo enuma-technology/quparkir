@@ -4,6 +4,7 @@ import { Auth } from "../auth.js";
 import { pageHeader } from "../parts.js";
 import { go } from "../router.js";
 import { renderQR } from "../qr.js";
+import { choosePayment, payQRIS } from "../pay.js";
 
 export default async function statusPage(view) {
   const u = Auth.current();
@@ -51,15 +52,39 @@ export default async function statusPage(view) {
   });
 
   async function doCheckout(s) {
-    const z = await DB.checkout(s.id);
-    const body = h("div", {}, [
-      h(".center", { style: "font-size:46px" }, "✅"),
-      h("h3.center", { text: "Pembayaran Berhasil" }),
-      h("p.center.muted", { style: "margin:6px 0 14px", text: s.locationName }),
-      h(".li", {}, [h(".ic", { text: "💳" }), h("div", { style: "flex:1" }, [h(".t", { text: "Total dibayar" }), h(".s", { text: "QRIS / QuPay" })]), h(".end", {}, [h("b", { text: rupiah(z.amount), style: "color:var(--blue-700);font-size:1.1rem" })])]),
-      h("button.btn", { style: "margin-top:16px", onclick: () => { $("#modalHost").innerHTML = ""; go("#/riwayat"); } }, "Lihat Riwayat"),
-    ]);
-    modal("Struk Parkir", body);
+    try {
+      const bal = await Promise.resolve(DB.wallet.get(u.uid));
+      const preview = hitungTarif(s.vehicle.type, Date.now() - s.checkinAt);
+      const method = await choosePayment({ amount: preview, balance: bal });
+      if (!method) return;
+      if (method === "qris") {
+        const ok = await payQRIS({ amount: preview, title: "Bayar Parkir — QRIS" });
+        if (!ok) return toast("Pembayaran dibatalkan", "err");
+      }
+      const z = await DB.checkout(s.id, { method });
+      let sisa = null;
+      if (method === "qupay") {
+        // Baca ulang saldo TERBARU tepat sebelum debit (hindari lost-update dari tab lain).
+        const fresh = await Promise.resolve(DB.wallet.get(u.uid));
+        if (fresh < z.amount) {
+          toast("Saldo berubah & tidak cukup — selesaikan via QRIS", "err");
+          const ok = await payQRIS({ amount: z.amount, title: "Bayar Parkir — QRIS" });
+          if (!ok) toast("Tagihan " + rupiah(z.amount) + " belum terbayar", "err");
+        } else {
+          sisa = fresh - z.amount;
+          await DB.wallet.set(u.uid, sisa);
+        }
+      }
+      const body = h("div", {}, [
+        h(".center", { style: "font-size:46px" }, "✅"),
+        h("h3.center", { text: "Pembayaran Berhasil" }),
+        h("p.center.muted", { style: "margin:6px 0 14px", text: s.locationName }),
+        h(".li", {}, [h(".ic", { text: "💳" }), h("div", { style: "flex:1" }, [h(".t", { text: "Total dibayar" }), h(".s", { text: method === "qupay" ? "QuPay" : "QRIS" })]), h(".end", {}, [h("b", { text: rupiah(z.amount), style: "color:var(--blue-700);font-size:1.1rem" })])]),
+        method === "qupay" ? h("p.center.muted", { style: "margin-top:8px", html: "<small>Sisa saldo: " + rupiah(sisa) + "</small>" }) : null,
+        h("button.btn", { style: "margin-top:16px", onclick: () => { $("#modalHost").innerHTML = ""; go("#/riwayat"); } }, "Lihat Riwayat"),
+      ]);
+      modal("Struk Parkir", body);
+    } catch (e) { toast(e.message, "err"); }
   }
 
   return () => { clearTimeout(tick); unsub && unsub(); };

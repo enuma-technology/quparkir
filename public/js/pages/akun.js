@@ -3,6 +3,7 @@ import { DB, MODE } from "../data.js";
 import { Auth } from "../auth.js";
 import { appHeader } from "../parts.js";
 import { go, render } from "../router.js";
+import { payQRIS } from "../pay.js";
 
 export default async function akunPage(view) {
   const u = Auth.current();
@@ -27,12 +28,22 @@ export default async function akunPage(view) {
           h("b", { style: "color:var(--blue-700);font-size:1.3rem", text: rupiah(bal) })]),
         h("button.btn.sm", { style: "margin-top:10px", onclick: async () => {
           const inp = h("input.input", { type: "number", placeholder: "50000", value: "50000" });
-          modal("Top Up QuPay", h("div", {}, [h("label.field", {}, [h("span", { text: "Nominal" }), inp]),
-            h("button.btn", { onclick: async () => { await DB.wallet.set(u.uid, bal + Number(inp.value || 0)); $("#modalHost").innerHTML = ""; toast("Top up berhasil", "ok"); render(); } }, "Top Up")]));
+          modal("Top Up QuPay", h("div", {}, [h("label.field", {}, [h("span", { text: "Nominal (Rp 10.000 – Rp 1.000.000)" }), inp]),
+            h("button.btn", { onclick: async () => {
+              const amount = Number(inp.value);
+              if (!Number.isInteger(amount) || amount < 10000 || amount > 1000000)
+                return toast("Nominal harus bilangan bulat 10.000 – 1.000.000", "err");
+              $("#modalHost").innerHTML = "";
+              const ok = await payQRIS({ amount, title: "Top Up QuPay" });
+              if (!ok) return toast("Top up dibatalkan", "err");
+              const cur = await Promise.resolve(DB.wallet.get(u.uid));
+              await DB.wallet.set(u.uid, cur + amount);
+              toast("Top up berhasil", "ok"); render();
+            } }, "Top Up")]));
         } }, "＋ Top Up"),
       ]),
 
-      h("h4", { style: "margin:6px 4px 8px", text: "Ganti Peran (demo)" }), roleBar,
+      ...(MODE === "demo" ? [h("h4", { style: "margin:6px 4px 8px", text: "Ganti Peran (demo)" }), roleBar] : []),
 
       h("div", { style: "margin-top:14px" }, [
         u.role !== "pelanggan" ? h("button.btn.ghost", { style: "margin-bottom:10px", onclick: () => go("#/petugas") }, "🦺 Dashboard Petugas") : null,

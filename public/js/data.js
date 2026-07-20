@@ -40,6 +40,7 @@ function demoBackend() {
       subscribe: (cb) => sub(x => x.locations, cb),
       get: (id) => s.locations.find(l => l.id === id),
       update: (id, patch) => { Object.assign(s.locations.find(l => l.id === id), patch); emit(); },
+      seed: async () => { if (!s.locations.length) { s.locations = structuredClone(SEED_LOCATIONS); emit(); } },
     },
     vehicles: {
       subscribe: (u, cb) => sub(x => x.vehicles[u] || [], cb),
@@ -67,17 +68,18 @@ function demoBackend() {
       if (loc[key] >= loc[cap]) throw new Error("Slot penuh di lokasi ini.");
       loc[key]++;
       const sess = { id: randId(), uid: u, vehicle, locationId, locationName: loc.name,
-        checkinAt: Date.now(), status: "active", qrToken: "QP-" + randId().toUpperCase(), verified: false };
+        checkinAt: Date.now(), status: "active", qrToken: "QP-" + crypto.randomUUID().toUpperCase(), verified: false };
       s.sessions.push(sess); emit(); return sess;
     },
-    async checkout(id) {
+    async checkout(id, { method = "qris" } = {}) {
       const z = s.sessions.find(x => x.id === id); if (!z) throw new Error("Sesi tidak ditemukan");
-      z.checkoutAt = Date.now(); z.status = "done";
+      if (z.status !== "active") throw new Error("Sesi sudah selesai.");
+      z.checkoutAt = Date.now(); z.status = "done"; z.method = method;
       z.amount = hitungTarif(z.vehicle.type, z.checkoutAt - z.checkinAt);
       const loc = s.locations.find(l => l.id === z.locationId);
       const key = z.vehicle.type === "mobil" ? "occCar" : "occMotor"; loc[key] = Math.max(0, loc[key] - 1);
       s.transactions.push({ id: randId(), sessionId: z.id, uid: z.uid, locationId: z.locationId,
-        amount: z.amount, method: "qris", paidAt: Date.now() });
+        amount: z.amount, method, paidAt: Date.now() });
       emit(); return z;
     },
     async verify(id, officerId) {
@@ -112,6 +114,9 @@ async function firebaseBackend() {
       subscribe: (cb) => onSnapshot(collection(db, "locations"), s => cb(colArr(s))),
       get: async (id) => (await getDoc(doc(db, "locations", id))).data(),
       update: (id, patch) => updateDoc(doc(db, "locations", id), patch),
+      // seeding produksi: hanya lolos rules bila pemanggil ber-role admin
+      seed: async () => { for (const l of SEED_LOCATIONS) { const { id, ...d } = l;
+        await setDoc(doc(db, "locations", id), { ...d, occMotor: 0, occCar: 0 }); } },
     },
     vehicles: {
       subscribe: (u, cb) => onSnapshot(collection(db, "users", u, "vehicles"), s => cb(colArr(s))),
@@ -132,10 +137,14 @@ async function firebaseBackend() {
     wallet: { get: async (u) => (await getDoc(doc(db, "users", u))).data()?.wallet ?? 25000, set: (u, v) => setDoc(doc(db, "users", u), { wallet: v }, { merge: true }) },
 
     async checkin(u, { vehicle, locationId }) {
+      // pre-check cepat (fast fail); jaminan sesungguhnya di transaksi bawah
       const actives = await getDocs(query(collection(db, "sessions"), where("uid", "==", u), where("status", "==", "active")));
       if (!actives.empty) throw new Error("Anti double-parking: Anda masih punya sesi parkir aktif.");
       const ref = doc(collection(db, "sessions"));
       await runTransaction(db, async (tx) => {
+        const userRef = doc(db, "users", u);
+        if ((await tx.get(userRef)).data()?.activeSession)
+          throw new Error("Anti double-parking: Anda masih punya sesi parkir aktif.");
         const locRef = doc(db, "locations", locationId);
         const loc = (await tx.get(locRef)).data();
         const key = vehicle.type === "mobil" ? "occCar" : "occMotor";
@@ -143,22 +152,32 @@ async function firebaseBackend() {
         if ((loc[key] || 0) >= loc[cap]) throw new Error("Slot penuh di lokasi ini.");
         tx.update(locRef, { [key]: (loc[key] || 0) + 1 });
         tx.set(ref, { uid: u, vehicle, locationId, locationName: loc.name, checkinAt: Date.now(),
-          status: "active", qrToken: "QP-" + randId().toUpperCase(), verified: false });
+          status: "active", qrToken: "QP-" + crypto.randomUUID().toUpperCase(), verified: false });
+        tx.set(userRef, { activeSession: ref.id }, { merge: true });
       });
       return { id: ref.id };
     },
-    async checkout(id) {
+    async checkout(id, { method = "qris" } = {}) {
       const ref = doc(db, "sessions", id);
-      const z = (await getDoc(ref)).data();
-      const amount = hitungTarif(z.vehicle.type, Date.now() - z.checkinAt);
-      await updateDoc(ref, { checkoutAt: Date.now(), status: "done", amount });
-      const key = z.vehicle.type === "mobil" ? "occCar" : "occMotor";
-      const locRef = doc(db, "locations", z.locationId);
+      let out;
       await runTransaction(db, async (tx) => {
+        const z = (await tx.get(ref)).data();
+        if (!z) throw new Error("Sesi tidak ditemukan");
+        if (z.status !== "active") throw new Error("Sesi sudah selesai.");
+        const locRef = doc(db, "locations", z.locationId);
         const loc = (await tx.get(locRef)).data();
+        const checkoutAt = Date.now();
+        const amount = hitungTarif(z.vehicle.type, checkoutAt - z.checkinAt);
+        const key = z.vehicle.type === "mobil" ? "occCar" : "occMotor";
+        tx.update(ref, { checkoutAt, status: "done", amount, method });
         tx.update(locRef, { [key]: Math.max(0, (loc[key] || 0) - 1) });
+        tx.set(doc(db, "users", z.uid), { activeSession: null }, { merge: true });
+        // catat transaksi di TRANSAKSI YANG SAMA — checkout & log pendapatan atomik
+        tx.set(doc(collection(db, "transactions")), { sessionId: id, uid: z.uid,
+          locationId: z.locationId, amount, method, paidAt: checkoutAt });
+        out = { id, ...z, checkoutAt, status: "done", amount, method };
       });
-      await addDoc(collection(db, "transactions"), { sessionId: id, uid: z.uid, locationId: z.locationId, amount, method: "qris", paidAt: Date.now() });
+      return out;
     },
     verify: (id, officerId) => updateDoc(doc(db, "sessions", id), { verified: true, verifiedBy: officerId }),
   };

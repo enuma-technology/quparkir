@@ -11,10 +11,16 @@ export default async function riwayatPage(view) {
   const listEl = h("div.pad");
   view.append(appHeader({ title: "Aktivitas", sub: "Riwayat & sesi parkir Anda", icons: true }), tabs, listEl);
 
-  ["aktivitas", "history"].forEach(t => tabs.append(
-    h("button" + (t === tab ? ".active" : ""), { onclick: () => { tab = t; [...tabs.children].forEach(c => c.classList.toggle("active", c === undefined)); paint(last); [...tabs.children].forEach((c, i) => c.classList.toggle("active", (i === 0) === (t === "aktivitas"))); } },
-      t === "aktivitas" ? "Aktivitas" : "History")
-  ));
+  const btns = {};
+  ["aktivitas", "history"].forEach(t => {
+    btns[t] = h("button" + (t === tab ? ".active" : ""), { onclick: () => setTab(t) }, t === "aktivitas" ? "Aktivitas" : "History");
+    tabs.append(btns[t]);
+  });
+  function setTab(t) {
+    tab = t;
+    Object.entries(btns).forEach(([k, b]) => b.classList.toggle("active", k === t));
+    paint(last);
+  }
 
   let last = [];
   const paint = (sessions) => {
@@ -36,6 +42,7 @@ export default async function riwayatPage(view) {
       ]),
       h(".end", {}, [
         s.status === "active" ? h("span.pill.warn", { text: "Aktif" }) : h("b", { style: "color:var(--blue-700)", text: rupiah(s.amount || 0) }),
+        s.status === "done" && s.method ? h(".s", { text: s.method === "qupay" ? "QuPay" : "QRIS" }) : null,
       ]),
     ])));
   };

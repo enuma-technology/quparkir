@@ -1,4 +1,4 @@
-import { h, $, rupiah, durasiLabel, toast } from "../util.js";
+import { h, rupiah, modal } from "../util.js";
 import { DB } from "../data.js";
 import { Auth } from "../auth.js";
 import { appHeader } from "../parts.js";
@@ -11,9 +11,42 @@ const QUICK = [
   { e: "🎫", t: "E-Ticket", go: "#/status" },
   { e: "🧾", t: "Riwayat", go: "#/riwayat" },
   { e: "💳", t: "Top Up", go: "#/akun" },
-  { e: "🎁", t: "Promo", go: "#/home" },
-  { e: "🆘", t: "Bantuan", go: "#/akun" },
+  { e: "🎁", t: "Promo", act: promoModal },
+  { e: "🆘", t: "Bantuan", act: bantuanModal },
 ];
+
+const PROMOS = [
+  { kik: "BARU", t: "Cashback 50%", s: "Semua transaksi parkir pakai QuPay · 27 Feb – 31 Agu 2026" },
+  { kik: "HEMAT", t: "Gratis Biaya Admin", s: "Top up QuPay pertama tanpa biaya tambahan" },
+  { kik: "POIN", t: "2× Poin", s: "Check-in di kantong parkir favoritmu akhir pekan ini" },
+];
+
+function promoModal() {
+  modal("Promo", h("div", {}, [
+    ...PROMOS.map(p => h(".li", {}, [
+      h(".ic", { text: "🎁" }),
+      h("div", { style: "flex:1" }, [h(".t", { text: p.t }), h(".s", { text: p.s })]),
+      h(".end", {}, [h("span.pill", { text: p.kik })]),
+    ])),
+    h(".s", { style: "margin-top:10px;text-align:center", text: "Syarat & ketentuan berlaku" }),
+  ]));
+}
+
+function bantuanModal() {
+  const langkah = [
+    ["1️⃣", "Scan QR lokasi", "Pindai kode QR di gerbang masuk lokasi parkir."],
+    ["2️⃣", "Parkir", "Parkirkan kendaraan Anda di slot yang tersedia."],
+    ["3️⃣", "Check-out & bayar", "Selesaikan sesi lalu bayar dengan QuPay atau QRIS."],
+  ];
+  modal("Bantuan", h("div", {}, [
+    ...langkah.map(([ic, t, s]) => h(".li", {}, [
+      h(".ic", { text: ic }),
+      h("div", { style: "flex:1" }, [h(".t", { text: t }), h(".s", { text: s })]),
+    ])),
+    h(".s", { style: "margin-top:10px", text: "Kendala di lapangan? Hubungi petugas berseragam QuParkir di lokasi." }),
+    h(".s", { style: "margin-top:4px", text: "Dishub Kota Surakarta" }),
+  ]));
+}
 
 export default async function homePage(view) {
   const u = Auth.current();
@@ -22,9 +55,10 @@ export default async function homePage(view) {
   const activeSlot = h("div");           // banner sesi aktif
   const nearby = h(".cards");            // kartu terdekat
   const dots = h(".dots");
+  const header = appHeader({ title: `Hi, ${u.name} 👋`, sub: "Mau parkir di mana hari ini?", points: 0 });
 
   view.append(
-    appHeader({ title: `Hi, ${u.name} 👋`, sub: "Mau parkir di mana hari ini?", points: 0 }),
+    header,
     h(".wallet", {}, [
       h(".wlogo", { text: "QuPay" }),
       h(".wname", {}, [document.createTextNode("QuPay"), h("small", { text: "Saldo parkir cashless" })]),
@@ -32,7 +66,7 @@ export default async function homePage(view) {
     ]),
     activeSlot,
     h("nav.grid", {}, QUICK.map(q =>
-      h("button.tile", { onclick: () => go(q.go) }, [h("span.ic" + (q.accent ? ".accent" : ""), { text: q.e }), h("span", { text: q.t })])
+      h("button.tile", { onclick: () => q.act ? q.act() : go(q.go) }, [h("span.ic" + (q.accent ? ".accent" : ""), { text: q.e }), h("span", { text: q.t })])
     )),
     promoSection(dots),
     h("section.section", {}, [
@@ -40,6 +74,14 @@ export default async function homePage(view) {
       nearby,
     ]),
   );
+
+  // poin nyata: 10 poin per sesi selesai
+  try {
+    const sesi = await Promise.resolve(DB.sessions.listFor(u.uid));
+    const poin = sesi.filter(s => s.status === "done").length * 10;
+    const el = header.querySelector(".points");
+    if (el) el.textContent = "⭐ Poin : " + poin;
+  } catch { /* abaikan */ }
 
   // sesi aktif
   const unsubS = DB.sessions.subscribeActive(u.uid, (s) => {
@@ -86,5 +128,5 @@ function promoSection(dots) {
     const i = Math.round(car.scrollLeft / (car.scrollWidth / slides.length));
     [...dots.children].forEach((d, n) => d.classList.toggle("on", n === Math.min(i, slides.length - 1)));
   });
-  return h("section.section", {}, [h(".head", {}, [h("h2", { text: "Promo" }), h("a", {}, "Lihat semua")]), car, dots]);
+  return h("section.section", {}, [h(".head", {}, [h("h2", { text: "Promo" }), h("a", { onclick: promoModal }, "Lihat semua")]), car, dots]);
 }

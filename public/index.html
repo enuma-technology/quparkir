@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#1d4ed8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net https://apis.google.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://api.qrserver.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://api.qrserver.com; frame-src https://quparkir.firebaseapp.com https://accounts.google.com; worker-src 'self'; media-src 'self' blob:; base-uri 'self'; object-src 'none'" />
 <title>QuParkir — Parkir Digital Surakarta</title>
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🅿️</text></svg>" />
@@ -20,7 +21,7 @@
 
   <!-- App column -->
   <div class="app" id="app">
-    <div class="scroll" id="view"><!-- halaman dirender di sini --></div>
+    <div class="scroll" id="view"><div class="skel-page"><div class="skel skel-header"></div><div class="skel skel-card"></div><div class="skel-row"><div class="skel skel-tile"></div><div class="skel skel-tile"></div><div class="skel skel-tile"></div><div class="skel skel-tile"></div></div><div class="skel skel-card"></div><div class="skel skel-card short"></div></div></div>
 
     <!-- Bottom nav (disembunyikan di halaman login) -->
     <nav class="tabbar" id="tabbar" aria-label="Navigasi utama" hidden>

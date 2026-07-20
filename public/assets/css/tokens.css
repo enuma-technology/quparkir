@@ -24,8 +24,8 @@
 
 /* GLASS */
 body[data-mode="glass"]{
-  --app-bg:rgba(255,255,255,.10); --card:rgba(255,255,255,.16); --tile:rgba(255,255,255,.18);
-  --text:#eaf2ff; --text-soft:#c7d6f5; --line:rgba(255,255,255,.18);
+  --app-bg:rgba(255,255,255,.10); --card:rgba(255,255,255,.24); --tile:rgba(255,255,255,.18);
+  --text:#eaf2ff; --text-soft:#dbe6fb; --line:rgba(255,255,255,.18);
   --neu-shadow:none; --aurora-opacity:1;
 }
 /* NEUMORPH */

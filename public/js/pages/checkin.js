@@ -57,10 +57,16 @@ export default async function checkinPage(view) {
 
   let stopScan;
   async function scan() {
+    if (stopScan) { stopScan(); stopScan = null; }  // matikan kamera lama bila tombol ditekan lagi
     readerWrap.innerHTML = '<div id="reader"></div>';
     try {
       stopScan = await startScanner("reader", (txt) => {
-        toast("QR terbaca: " + txt, "ok");
+        const raw = String(txt).trim();
+        const id = raw.startsWith("QP-LOC:") ? raw.slice("QP-LOC:".length) : raw;
+        const l = locs.find(l => l.id === id);
+        if (!l) { toast("QR tidak dikenali sebagai lokasi parkir", "err"); return; }
+        selLoc = id; renderLoc();
+        toast("Lokasi dipilih: " + l.name, "ok");
         if (stopScan) stopScan(); readerWrap.innerHTML = "";
       });
     } catch (e) { readerWrap.innerHTML = ""; toast(e.message, "err"); }

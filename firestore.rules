@@ -18,35 +18,59 @@ service cloud.firestore {
     function isAdmin() { return isSignedIn() && roleOf(uid()) == 'admin'; }
     function isPetugas() { return isSignedIn() && roleOf(uid()) in ['petugas', 'admin']; }
 
-    // Profil & kendaraan: hanya pemilik
+    // Profil: pemilik; 'role' TIDAK boleh ditulis klien (anti privilege-escalation).
+    // 'wallet' boleh (prototipe; server-side wallet = fase Cloud Functions) tapi wajib angka >= 0.
     match /users/{u} {
-      allow read, write: if isSignedIn() && uid() == u;
+      allow read: if isSignedIn() && uid() == u;
+      allow create: if isSignedIn() && uid() == u
+        && !request.resource.data.keys().hasAny(['role'])
+        && (!('wallet' in request.resource.data)
+            || (request.resource.data.wallet is number && request.resource.data.wallet >= 0));
+      allow update: if isSignedIn() && uid() == u
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+        && (!('wallet' in request.resource.data)
+            || (request.resource.data.wallet is number && request.resource.data.wallet >= 0));
       match /vehicles/{v} {
         allow read, write: if isSignedIn() && uid() == u;
       }
     }
 
-    // Lokasi parkir: publik dibaca; hanya admin yang mengubah kapasitas
-    // (occupied di-update via transaksi check-in/out oleh pengguna ter-autentikasi)
     match /locations/{id} {
-      allow read: if true;                       // publik: peta & live slot
-      allow create, update: if isSignedIn();     // seeding + update slot/kapasitas
-      allow delete: if isAdmin();
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isSignedIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['occMotor', 'occCar'])
+            && request.resource.data.occMotor >= 0
+            && request.resource.data.occMotor <= resource.data.capMotor
+            && request.resource.data.occCar >= 0
+            && request.resource.data.occCar <= resource.data.capCar
+            && (request.resource.data.occMotor - resource.data.occMotor) >= -1
+            && (request.resource.data.occMotor - resource.data.occMotor) <= 1
+            && (request.resource.data.occCar - resource.data.occCar) >= -1
+            && (request.resource.data.occCar - resource.data.occCar) <= 1);
     }
 
-    // Sesi parkir (e-ticket)
     match /sessions/{id} {
       allow read: if isSignedIn() && (resource.data.uid == uid() || isPetugas());
       allow create: if isSignedIn() && request.resource.data.uid == uid()
-                    && request.resource.data.status == 'active';
-      // pemilik boleh checkout; petugas boleh verifikasi
-      allow update: if isSignedIn() && (resource.data.uid == uid() || isPetugas());
+                    && request.resource.data.status == 'active'
+                    && request.resource.data.verified == false;
+      // Pemilik: hanya field checkout — TIDAK bisa self-verify.
+      allow update: if isSignedIn() && resource.data.uid == uid()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'checkoutAt', 'amount', 'method']);
+      // Petugas: hanya verifikasi.
+      allow update: if isPetugas()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['verified', 'verifiedBy']);
     }
 
-    // Transaksi
     match /transactions/{id} {
       allow read: if isSignedIn() && (resource.data.uid == uid() || isAdmin());
-      allow create: if isSignedIn() && request.resource.data.uid == uid();
+      allow create: if isSignedIn() && request.resource.data.uid == uid()
+        && request.resource.data.amount is number && request.resource.data.amount > 0
+        && request.resource.data.method in ['qupay', 'qris'];
     }
 
     // Petugas
