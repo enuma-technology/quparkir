@@ -28,6 +28,8 @@
 /* NB: kelas .bar sudah dipakai app.css untuk progress bar (height:7px),
    jadi baris topbar memakai nama tersendiri .adm-bar. */
 .admin-topbar .adm-shell.adm-bar{display:flex;align-items:center;gap:12px;padding:12px 16px}
+.admin-topbar .adm-logo{width:34px;height:34px;flex:none;object-fit:contain;
+  filter:drop-shadow(0 3px 8px rgba(4,10,40,.4))}
 .admin-topbar .brandbox{min-width:0}
 .admin-topbar b{display:block;font-size:1rem;font-weight:800;line-height:1.25;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -137,10 +139,69 @@ textarea.input{resize:vertical;font-family:inherit;min-height:84px;line-height:1
 .adm-status.warn{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.35);color:#92400e}
 .adm-status.demo{background:var(--blue-200);border-color:rgba(37,99,235,.25);color:var(--blue-800)}
 
-/* placeholder saat menunggu snapshot pertama */
-.adm-loading{padding:28px 20px}
-.adm-loading .ic{font-size:32px;animation:adm-pulse 1.4s ease-in-out infinite}
-@keyframes adm-pulse{50%{opacity:.35}}
+/* ============================================================
+   SKELETON — markup di js/skeleton.js (adminSkeletonHTML/adminPartHTML).
+   Potongan di bawah meniru ukuran elemen aslinya, termasuk perubahan
+   arah .adm-item pada 640px, supaya tidak ada lompatan tata letak saat
+   isi sungguhan menggantikan kerangka.
+   ============================================================ */
+.skel-admin{min-height:100dvh}
+
+/* kotak kerangka DI ATAS topbar bergradien harus terang, bukan biru gelap */
+.admin-topbar .skel{background:linear-gradient(90deg,rgba(255,255,255,.16) 25%,rgba(255,255,255,.30) 50%,rgba(255,255,255,.16) 75%);
+  background-size:200% 100%}
+.skel-admbrand{display:flex;flex-direction:column;gap:7px;min-width:0}
+.skel-admbrand .skel-line:nth-child(1){width:132px;height:13px}
+.skel-admbrand .skel-line:nth-child(2){width:104px;height:10px}
+.skel-admlogout{flex:none;margin-left:auto;width:74px;height:44px;border-radius:12px}
+
+/* selebar tab asli (padding 10/16 + min-height 44) */
+.skel-admtab{flex:none;height:44px;border-radius:999px;width:112px}
+.skel-admtab:nth-child(1){width:124px}
+.skel-admtab:nth-child(3){width:96px}
+.skel-admtab:nth-child(4){width:104px}
+.skel-admtab:nth-child(5){width:136px}
+
+.skel-admstatus{height:70px;border-radius:var(--r-sm)}
+
+/* .adm-shell sudah memberi padding 16 — cegah indentasi ganda seperti
+   aturan .adm-shell>.section pada isi sungguhan */
+.adm-shell>.skel-section,.skel-admcols>.skel-section{padding-inline:0}
+
+/* mirip .adm-cols */
+.skel-admcols{display:grid;gap:0}
+@media (min-width:1024px){.skel-admcols{grid-template-columns:1fr 1fr;gap:24px;align-items:start}}
+
+/* .stats bawaan 3 kolom; tab Ringkasan memakai 4 kartu seperti .stats-4 */
+.skel-admstats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media (min-width:900px){.skel-admstats{grid-template-columns:repeat(4,1fr)}}
+
+/* mirip .adm-item */
+.skel-admitem{background:var(--card);border-radius:var(--r-md);padding:14px;margin-bottom:10px;
+  box-shadow:0 8px 20px rgba(8,20,70,.1);display:flex;flex-direction:column;gap:12px}
+.skel-admitem .top{display:flex;align-items:flex-start;gap:12px;min-width:0}
+.skel-admitem .act{display:flex;gap:8px}
+.skel-admitem .act .skel{flex:1 1 auto;height:44px;border-radius:12px}
+@media (min-width:640px){
+  .skel-admitem{flex-direction:row;align-items:center;gap:14px}
+  .skel-admitem .top{flex:1;align-items:center}
+  .skel-admitem .act{flex:none}
+  .skel-admitem .act .skel{flex:none;width:72px}
+}
+
+/* mirip .qr-grid + .qr-card */
+.skel-admqrgrid{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width:420px){.skel-admqrgrid{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}}
+.skel-admqr{background:var(--card);border-radius:var(--r-md);padding:16px;
+  box-shadow:0 8px 20px rgba(8,20,70,.1);
+  display:flex;flex-direction:column;align-items:center;gap:10px}
+.skel-admqr .q{width:160px;height:160px;max-width:100%;border-radius:14px}
+.skel-admqr .skel-line{width:62%}
+.skel-admqr .skel-line + .skel-line{width:44%;height:9px}
+.skel-admqr .b{width:100%;height:44px;border-radius:12px}
+
+/* kerangka di dalam tab: tanpa padding ganda, .section sudah mengaturnya */
+.skel-admpart{display:block}
 
 /* ---------- aksesibilitas ---------- */
 @media (prefers-reduced-motion:reduce){

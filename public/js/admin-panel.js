@@ -9,6 +9,8 @@ import { authShell, field, setError, clearError, busy, markAuthView } from "./pa
 import { initData, DB, MODE } from "./data.js";
 import { initAuth, Auth } from "./auth.js";
 import { renderQR } from "./qr.js";
+import { adminPartNode } from "./skeleton.js";
+import { SESSION_KEY } from "./admin-boot.js";
 
 // ⚠️ CATATAN KEAMANAN — WAJIB DIBACA SEBELUM DIPAKAI DI PRODUKSI:
 // Username & password di bawah ini tersimpan sebagai teks polos di berkas JS
@@ -26,18 +28,17 @@ import { renderQR } from "./qr.js";
 // Auth + custom claim/role, idealnya lewat Cloud Functions.
 const ADMIN_USER = "admin";
 const ADMIN_PASS = "admin234156";
-const SESSION_KEY = "qp_admin_session_v1";
 
 // sessionStorage (bukan localStorage): sesi admin berakhir saat tab ditutup,
 // mengurangi risiko tertinggal login di komputer bersama.
 const isLoggedIn = () => { try { return sessionStorage.getItem(SESSION_KEY) === "1"; } catch { return false; } };
 const setLoggedIn = (v) => { try { v ? sessionStorage.setItem(SESSION_KEY, "1") : sessionStorage.removeItem(SESSION_KEY); } catch {} };
 
-// Placeholder sebelum snapshot pertama tiba. Tanpa ini area daftar tampak
-// kosong melompong saat Firestore masih memuat — tak terbedakan dari
-// "memang belum ada data".
-const memuat = (teks = "Memuat data…") =>
-  h(".empty.adm-loading", {}, [h(".ic", { text: "⏳" }), h("p", { text: teks })]);
+// Kerangka sebelum snapshot pertama tiba. Tanpa ini area daftar tampak kosong
+// melompong saat Firestore masih memuat — tak terbedakan dari "memang belum
+// ada data". Bentuknya mengikuti isi yang akan menggantikannya, jadi tata
+// letak tidak melompat. `jenis`: "list" | "qr" | "stats".
+const memuat = (jenis = "list", n = 3) => adminPartNode(jenis, n);
 
 // Baris daftar admin: isi di kiri, tombol aksi di kanan. Di layar sempit
 // blok aksi turun jadi baris sendiri selebar kartu (lihat .adm-item di
@@ -174,6 +175,9 @@ const TABS = [
 
 function boot(root) {
   if (unmarkAuth) { unmarkAuth(); unmarkAuth = null; }
+  // admin-boot.js bisa memasang authView sebelum modul ini jalan — lepaskan
+  // tanpa bergantung pada unmarkAuth, yang hanya terisi bila lewat renderLogin
+  root.classList.remove("authView");
   $("#app").classList.add("wide");
   root.innerHTML = "";
 
@@ -209,7 +213,8 @@ function boot(root) {
     h(".admin-head", {}, [
       h(".admin-topbar", {}, [
         h(".adm-shell.adm-bar", {}, [
-          h(".brandbox", {}, [h("b", { text: "🅿️ Panel Admin" }), h("small", { text: "QuParkir · Surakarta" })]),
+          h("img.adm-logo", { src: "assets/logo/logo-mark-white.png", alt: "", width: 34, height: 34 }),
+          h(".brandbox", {}, [h("b", { text: "Panel Admin" }), h("small", { text: "QuParkir · Surakarta" })]),
           h("button.btn.sm.ghost", { type: "button", onclick: logout }, "Keluar"),
         ]),
       ]),
@@ -223,9 +228,9 @@ function boot(root) {
 
 // ---------- Tab: Ringkasan ----------
 function renderRingkasan(root) {
-  const statEl = h(".stats.stats-4");
-  const locList = h("div", {}, [memuat()]);
-  const txList = h("div", {}, [memuat()]);
+  const statEl = h("div", {}, [memuat("stats", 4)]);
+  const locList = h("div", {}, [memuat("list", 3)]);
+  const txList = h("div", {}, [memuat("list", 3)]);
   root.append(
     h("section.section", {}, [h(".head", {}, [h("h2", { text: "Ringkasan" })]), statEl]),
     // dua kolom berdampingan di desktop, bertumpuk di mobile
@@ -244,10 +249,12 @@ function renderRingkasan(root) {
     const totalOcc = locs.reduce((a, l) => a + (l.occMotor || 0) + (l.occCar || 0), 0);
     const occPct = totalCap ? Math.round((totalOcc / totalCap) * 100) : 0;
 
-    statEl.innerHTML = "";
-    [["Pendapatan hari ini", rupiah(incomeToday)], ["Kendaraan aktif", String(totalOcc)],
-     ["Keterisian", occPct + "%"], ["Lokasi terdaftar", String(locs.length)]]
-      .forEach(([l, n]) => statEl.append(h(".stat", {}, [h(".num", { style: "font-size:1.1rem", text: n }), h(".lbl", { text: l })])));
+    // grid .stats dibuat di sini (bukan di statEl) supaya statEl bisa memuat
+    // kerangka utuh lebih dulu tanpa ikut terjepit ke dalam sel grid
+    statEl.replaceChildren(h(".stats.stats-4", {},
+      [["Pendapatan hari ini", rupiah(incomeToday)], ["Kendaraan aktif", String(totalOcc)],
+       ["Keterisian", occPct + "%"], ["Lokasi terdaftar", String(locs.length)]]
+        .map(([l, n]) => h(".stat", {}, [h(".num", { style: "font-size:1.1rem", text: n }), h(".lbl", { text: l })]))));
 
     locList.innerHTML = "";
     if (!locs.length) locList.append(h(".empty", {}, [h(".ic", { text: "🅿️" }), h("p", { text: "Belum ada kantong parkir." })]));
@@ -547,7 +554,7 @@ async function unduhQR(el, filename) {
 }
 
 function renderQris(root) {
-  const locWrap = h(".qr-grid", {}, [memuat("Memuat lokasi…")]);
+  const locWrap = h("div", {}, [memuat("qr", 3)]);
   const custom = h("div");
   root.append(
     h("section.section", {}, [
@@ -563,12 +570,17 @@ function renderQris(root) {
   );
 
   const unsub = DB.locations.subscribe((locs) => {
-    locWrap.innerHTML = "";
-    if (!locs.length) { locWrap.append(h(".empty", {}, [h(".ic", { text: "🅿️" }), h("p", { text: "Belum ada lokasi." })])); return; }
+    if (!locs.length) {
+      locWrap.replaceChildren(h(".empty", {}, [h(".ic", { text: "🅿️" }), h("p", { text: "Belum ada lokasi." })]));
+      return;
+    }
+    // grid dibuat di sini, bukan di locWrap, agar kerangka tidak terjepit sel
+    const grid = h(".qr-grid");
+    locWrap.replaceChildren(grid);
     locs.forEach(l => {
       const box = h(".qrbox");
       renderQR(box, "QP-LOC:" + l.id, 160);
-      locWrap.append(h(".qr-card", {}, [
+      grid.append(h(".qr-card", {}, [
         box,
         h(".t", { text: l.name }),
         h(".s", { text: "QP-LOC:" + l.id }),

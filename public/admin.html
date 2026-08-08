@@ -8,26 +8,31 @@
 <title>Panel Admin — QuParkir</title>
 <meta name="description" content="Panel admin QuParkir: kelola lokasi parkir, promo, banner beranda, dan ekspor QR." />
 <meta name="robots" content="noindex, nofollow" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231d4ed8'/><text x='50' y='74' font-size='62' font-family='system-ui' font-weight='bold' text-anchor='middle' fill='white'>P</text></svg>" />
+<link rel="icon" type="image/png" sizes="32x32" href="assets/logo/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="assets/logo/favicon-16.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="assets/logo/apple-touch-icon.png" />
 
 <link rel="stylesheet" href="assets/css/tokens.css" />
 <link rel="stylesheet" href="assets/css/app.css" />
 <link rel="stylesheet" href="assets/css/admin.css" />
+
+<!-- jalur kritis kerangka: diambil lebih dulu supaya tergambar sebelum
+     modul panel (util/parts/data/auth/qr) selesai diunduh -->
+<link rel="modulepreload" href="js/admin-boot.js" />
+<link rel="modulepreload" href="js/skeleton.js" />
 </head>
 <body>
   <div class="aurora" aria-hidden="true"></div>
 
   <div class="app" id="app">
-    <div class="scroll noTab" id="view">
-      <div class="skel-page"><div class="skel skel-header"></div><div class="skel skel-card"></div>
-        <div class="skel-row"><div class="skel skel-tile"></div><div class="skel skel-tile"></div><div class="skel skel-tile"></div><div class="skel skel-tile"></div></div>
-        <div class="skel skel-card"></div><div class="skel skel-card short"></div></div>
-    </div>
+    <!-- Diisi js/admin-boot.js dengan kerangka gerbang/dashboard sesuai sesi -->
+    <div class="scroll noTab" id="view"></div>
   </div>
 
   <div id="toast" class="toast"></div>
   <div id="modalHost"></div>
 
+  <script type="module" src="js/admin-boot.js"></script>
   <script type="module" src="js/admin-panel.js"></script>
 </body>
 </html>

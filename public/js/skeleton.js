@@ -145,6 +145,100 @@ const auth = (jumlahField, penyedia) => `
     ${line("w60")}
   </div>`;
 
+// ============================================================
+// Panel admin (admin.html) — bukan rute SPA, jadi dipisah dari PAGES.
+//
+// Kerangkanya memakai ULANG kelas tata letak aslinya (.admin-head,
+// .admin-topbar, .adm-shell, .admin-tabs, .qr-grid) dan hanya mengisi
+// bagian dalamnya dengan kotak .skel. Dengan begitu tingginya dihitung
+// oleh CSS yang sama dengan isi sungguhan — termasuk saat titik ubah
+// 640px membuat baris CRUD berubah arah — sehingga tidak ada lompatan
+// tata letak ketika data tiba.
+// ============================================================
+
+// mirip .adm-item: isi + blok aksi (menumpuk di ponsel, sebaris ≥640px)
+const admItem = () => `
+  <div class="skel-admitem">
+    <div class="top">
+      <div class="skel skel-ic"></div>
+      <div class="skel-body">${line("w60")}${line("w40")}</div>
+    </div>
+    <div class="act">${box("skel")}${box("skel")}</div>
+  </div>`;
+
+// mirip .qr-card: kotak QR + judul + kode + tombol unduh
+const admQr = () => `
+  <div class="skel-admqr">
+    <div class="skel q"></div>
+    ${line("w60")}${line("w40")}
+    <div class="skel b"></div>
+  </div>`;
+
+const admStats = (n = 4) => `<div class="skel-admstats">${many(n, () => box("skel-stat"))}</div>`;
+// `aksi` = ada tautan "+ Tambah" di kanan judul
+const admHead = (aksi = false) => `<div class="skel-head">${line("w40")}${aksi ? box("skel-chip") : ""}</div>`;
+
+// kop tetap: topbar + strip tab (selalu sama di semua tab)
+const admChrome = () => `
+  <div class="admin-head">
+    <div class="admin-topbar">
+      <div class="adm-shell adm-bar">
+        <div class="skel-admbrand">${line()}${line()}</div>
+        <div class="skel skel-admlogout"></div>
+      </div>
+    </div>
+    <div class="admin-tabwrap">
+      <nav class="admin-tabs">${many(5, () => box("skel skel-admtab"))}</nav>
+    </div>
+  </div>`;
+
+// Potongan untuk DALAM tab — dipakai saat menunggu snapshot Firestore pertama.
+const ADMIN_PARTS = {
+  list: (n = 3) => many(n, () => admItem()),
+  qr: (n = 3) => `<div class="skel-admqrgrid">${many(n, () => admQr())}</div>`,
+  stats: (n = 4) => admStats(n),
+};
+
+export function adminPartHTML(jenis, n) {
+  const build = ADMIN_PARTS[jenis];
+  return build ? build(n) : ADMIN_PARTS.list(n);
+}
+
+export function adminPartNode(jenis, n) {
+  const el = document.createElement("div");
+  el.className = "skel-admpart";
+  el.setAttribute("aria-hidden", "true");
+  el.innerHTML = adminPartHTML(jenis, n);
+  return el;
+}
+
+// Kerangka layar penuh saat halaman pertama dibuka.
+//   "gate"      → kartu masuk (latar gelap, 2 field, tanpa tombol penyedia)
+//   "dashboard" → kop + strip status + Ringkasan (tab awal)
+export function adminSkeletonHTML(jenis) {
+  if (jenis === "gate") return auth(2, false);
+  // Tab awal adalah Ringkasan: statistik lalu dua daftar yang berdampingan
+  // mulai 1024px, persis seperti .adm-cols di renderRingkasan().
+  return `
+    ${admChrome()}
+    <div class="adm-shell adm-statuswrap">${box("skel skel-admstatus")}</div>
+    <div class="adm-shell">
+      <section class="skel-section">${admHead()}${admStats(4)}</section>
+      <div class="skel-admcols">
+        <section class="skel-section">${admHead()}${many(3, () => admItem())}</section>
+        <section class="skel-section">${admHead()}${many(2, () => admItem())}</section>
+      </div>
+    </div>`;
+}
+
+export function adminSkeletonNode(jenis) {
+  const el = document.createElement("div");
+  el.className = "skel-page skel-admin" + (jenis === "gate" ? " on-dark" : "");
+  el.setAttribute("aria-hidden", "true");
+  el.innerHTML = adminSkeletonHTML(jenis);
+  return el;
+}
+
 export const AUTH_SKELETONS = ["#/login", "#/register"];
 
 // Markup kerangka untuk sebuah rute. Rute tak dikenal → kerangka netral.
