@@ -64,6 +64,9 @@ function confirmDialog(title, msg, { okText = "Hapus", danger = true } = {}) {
 // ============================================================
 // dilepas lagi oleh boot(); tanpa ini kartu login tidak meregang setinggi layar
 let unmarkAuth = null;
+// janji "DB & Auth siap" — gerbang login tampil lebih dulu, jadi submit harus
+// menunggunya sebelum boot() menyentuh DB
+let siap = Promise.resolve();
 
 function renderLogin(root) {
   $("#app").classList.remove("wide");
@@ -82,9 +85,15 @@ function renderLogin(root) {
     busy(btn, true, "Memeriksa…");
     // Jeda kosmetik saja (terasa "memproses") — bukan pengaman. Lihat catatan
     // keamanan di atas berkas ini.
-    setTimeout(() => {
-      if (u === ADMIN_USER && p === ADMIN_PASS) { setLoggedIn(true); toast("Berhasil masuk", "ok"); boot(root); }
-      else { busy(btn, false, "Masuk"); setError(pass, "Username atau kata sandi salah"); }
+    setTimeout(async () => {
+      if (u !== ADMIN_USER || p !== ADMIN_PASS) {
+        busy(btn, false, "Masuk"); setError(pass, "Username atau kata sandi salah"); return;
+      }
+      setLoggedIn(true);
+      // DB mungkin masih dimuat di latar — boot() menyentuhnya, jadi tunggu dulu
+      await siap;
+      toast("Berhasil masuk", "ok");
+      boot(root);
     }, 250);
   }
 
@@ -584,16 +593,23 @@ function renderQris(root) {
 // ============================================================
 async function main() {
   const view = $("#view");
-  // initAuth() HARUS jalan sebelum initData(): Firestore mengambil token dari
+
+  // initAuth() HARUS mendahului initData(): Firestore mengambil token dari
   // instance Auth pada FirebaseApp yang sama. Kalau modul auth tak pernah
   // diinisialisasi, request Firestore berangkat tanpa token dan semua rules
   // ber-syarat isSignedIn()/isAdmin() menolaknya.
-  await initAuth();
-  await initData();
-  // tunggu status auth pertama (Firebase memulihkan sesi dari IndexedDB) supaya
-  // spanduk peringatan tidak berkedip "belum masuk" padahal sebenarnya sudah
-  await Promise.race([Auth.ready, new Promise(r => setTimeout(r, 5000))]);
-  DB.ensureSeed && DB.ensureSeed().catch(() => {});
-  if (isLoggedIn()) boot(view); else renderLogin(view);
+  siap = (async () => {
+    await initAuth();
+    await initData();
+    DB.ensureSeed && DB.ensureSeed().catch(() => {});
+    // tunggu status auth pertama (Firebase memulihkan sesi dari IndexedDB)
+    // supaya strip status tidak berkedip "belum masuk" padahal sudah
+    await Promise.race([Auth.ready, new Promise(r => setTimeout(r, 5000))]);
+  })();
+
+  // Gerbang sandi murni sisi klien — jangan menahannya di belakang unduhan SDK
+  // Firebase, kalau tidak layar hanya menampilkan kerangka selama beberapa detik.
+  if (isLoggedIn()) { await siap; boot(view); }
+  else renderLogin(view);
 }
 main();
