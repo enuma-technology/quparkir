@@ -71,7 +71,13 @@ export default function registerPage(view) {
     ]),
     note: MODE === "demo"
       ? "Mode demo — data akun tersimpan di perangkat ini (localStorage)."
-      : "Dengan mendaftar, Anda menyetujui ketentuan layanan QuParkir.",
+      : h("p.auth-note", {}, [
+          document.createTextNode("Dengan mendaftar, Anda menyetujui "),
+          h("a", { href: "syarat.html", target: "_blank", rel: "noopener", text: "Syarat & Ketentuan" }),
+          document.createTextNode(" dan "),
+          h("a", { href: "privasi.html", target: "_blank", rel: "noopener", text: "Kebijakan Privasi" }),
+          document.createTextNode(" kami."),
+        ]),
   }));
 
   return markAuthView();

@@ -50,6 +50,28 @@
     window.addEventListener("resize", function () { if (window.innerWidth > 900) closeMenu(); });
   }
 
+  // ---- 1.5) Tautan nav aktif mengikuti HALAMAN --------------------------
+  // Beda dari #3 di bawah (yang mengikuti SECTION lewat tautan #hash di
+  // index.html sendiri): ini untuk tautan antar-berkas (privasi.html,
+  // syarat.html, refund.html, index.html) di header yang sama di keempatnya
+  // — sebelumnya tak satu pun pernah ditandai aktif.
+  //
+  // Dicocokkan tanpa ekstensi ".html" karena firebase.json memakai
+  // cleanUrls:true — di produksi location.pathname adalah "/privasi", bukan
+  // "/privasi.html", walau markup <a href> tetap menulis ekstensinya.
+  function pageKey(path) {
+    var name = (path.split("/").pop() || "").replace(/\.html$/, "");
+    return name || "index";
+  }
+  if (links) {
+    var here = pageKey(location.pathname);
+    $$("a[href]", links).forEach(function (a) {
+      var href = a.getAttribute("href");
+      if (!href || href.charAt(0) === "#") return;   // ditangani scroll-spy #3
+      a.classList.toggle("active", pageKey(href.split("#")[0].split("?")[0]) === here);
+    });
+  }
+
   // ---- 2) Reveal saat scroll ----------------------------------------------
   var revealables = $$(".reveal");
   if (reduceMotion || !("IntersectionObserver" in window)) {

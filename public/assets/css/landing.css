@@ -88,6 +88,9 @@ h2.h2{font-size:clamp(1.7rem,3.6vw,2.6rem);line-height:1.15;font-weight:900;lett
 .nav.scrolled .nav-links a:hover,.nav.scrolled .nav-links a.active{background:var(--blue-200);color:var(--blue-700)}
 .nav-links a.active{background:rgba(255,255,255,.18);color:#fff}
 .nav-cta{margin-left:10px}
+/* .nav-links a menimpa warna teks .btn (rgba(255,255,255,.86), lalu jadi abu-gelap
+   saat .nav.scrolled) — CTA harus tetap putih penuh di kedua kondisi. */
+.nav-links a.nav-cta,.nav.scrolled .nav-links a.nav-cta{color:#fff}
 .nav-toggle{
   display:none;margin-left:auto;width:46px;height:46px;border:0;border-radius:12px;cursor:pointer;
   background:rgba(255,255,255,.16);color:#fff;place-items:center;
@@ -374,6 +377,43 @@ h2.h2{font-size:clamp(1.7rem,3.6vw,2.6rem);line-height:1.15;font-weight:900;lett
 .cta-band p{margin-top:12px;color:#e2efff;max-width:52ch;margin-inline:auto}
 .cta-actions{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:28px}
 
+/* ---------- halaman legal (privasi / syarat / refund) ---------- */
+.legal-hero{padding:calc(var(--ls-nav-h) + 46px) 0 40px;background:var(--ls-navy);color:#fff}
+.legal-hero h1{font-size:clamp(1.7rem,3.8vw,2.4rem);font-weight:900;letter-spacing:-.02em}
+.legal-hero p{margin-top:10px;color:#b9caee;max-width:62ch}
+.legal-hero .updated{margin-top:16px;font-size:.82rem;color:#93a9d6;font-weight:700}
+
+.legal{max-width:760px;margin:0 auto;padding:clamp(40px,6vw,64px) 0}
+.legal .toc{background:var(--ls-bg-soft);border:1px solid var(--ls-line);border-radius:16px;padding:22px 24px;margin-bottom:36px}
+.legal .toc h2{margin:0 0 12px;font-size:.82rem;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--ls-ink-soft)}
+.legal .toc ol{padding-left:20px;list-style:decimal;columns:2;column-gap:24px}
+.legal .toc li{margin-bottom:6px;break-inside:avoid}
+.legal .toc a{color:var(--blue-700);font-weight:700;font-size:.92rem}
+.legal .toc a:hover{text-decoration:underline}
+@media (max-width:560px){.legal .toc ol{columns:1}}
+
+.legal h2{font-size:1.32rem;font-weight:900;letter-spacing:-.01em;margin:38px 0 12px;scroll-margin-top:calc(var(--ls-nav-h) + 16px)}
+.legal h2:first-of-type{margin-top:0}
+.legal h3{font-size:1.02rem;font-weight:800;margin:20px 0 8px}
+.legal p{margin:12px 0;color:var(--ls-ink-soft)}
+.legal ul,.legal ol{margin:12px 0;padding-left:22px}
+.legal ul{list-style:disc}
+.legal ol{list-style:decimal}
+.legal li{margin-bottom:8px;color:var(--ls-ink-soft)}
+.legal li::marker{color:var(--blue-600)}
+.legal strong{color:var(--ls-ink)}
+.legal a{text-decoration:underline;text-underline-offset:2px}
+.legal table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.92rem}
+.legal th,.legal td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--ls-line);vertical-align:top}
+.legal th{font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ls-ink-soft)}
+.legal .note{background:var(--ls-bg-soft);border-left:3px solid var(--blue-600);border-radius:8px;padding:14px 16px;margin:16px 0;font-size:.92rem}
+.legal .note p{margin:0;color:var(--ls-ink)}
+/* penanda tegas: teks placeholder yang WAJIB diganti pemilik usaha sebelum
+   halaman ini dianggap final (dibaca reviewer/pengguna sungguhan) */
+.legal .fill{background:#fff7e0;border:1px dashed #d97706;border-radius:6px;padding:0 7px;color:#92400e;font-weight:700}
+.legal .contact-box{background:var(--ls-bg-soft);border-radius:16px;padding:22px 24px;margin-top:8px}
+.legal .contact-box ul{list-style:none;padding:0;margin:10px 0 0}
+.legal .contact-box li{margin-bottom:8px;color:var(--ls-ink-soft)}
 /* ---------- footer ---------- */
 .footer{background:var(--ls-navy);color:#a9bee6;padding:64px 0 28px}
 .foot-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1.2fr;gap:34px}
@@ -390,6 +430,16 @@ h2.h2{font-size:clamp(1.7rem,3.6vw,2.6rem);line-height:1.15;font-weight:900;lett
 .foot-bottom .spacer{flex:1}
 .badge-live{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:#c9dcff}
 .badge-live i{width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 0 4px rgba(34,197,94,.2);animation:pulse 1.8s ease-in-out infinite}
+
+/* Footer ringkas untuk halaman legal (privasi/syarat/refund) — brand +
+   copyright saja, terpusat. Navigasinya sudah ada di header (.nav-links),
+   jadi sengaja tanpa tautan supaya tidak dobel dan lebih lapang. */
+.footer.footer-min{padding:0}
+.footer-min-inner{padding:46px 0 34px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px}
+.footer-min-inner .brand{margin-bottom:0}
+.footer-min-inner p{margin:0;font-size:.86rem;max-width:48ch;line-height:1.6}
+.footer-min-rule{width:100%;max-width:180px;height:1px;background:rgba(255,255,255,.12);border:0;margin:2px 0}
+.footer-min-inner small{font-size:.78rem;color:#7e93bf}
 
 /* ---------- reveal on scroll ---------- */
 .reveal{opacity:0;transform:translateY(22px);transition:opacity .6s cubic-bezier(.2,.7,.3,1),transform .6s cubic-bezier(.2,.7,.3,1)}

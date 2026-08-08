@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#08123a" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'" />
+
+<title>Kebijakan Privasi — QuParkir</title>
+<meta name="description" content="Kebijakan privasi QuParkir: data apa yang dikumpulkan, bagaimana digunakan, dengan siapa dibagikan, dan hak Anda sebagai pengguna." />
+<meta name="robots" content="index, follow" />
+<link rel="canonical" href="https://quparkir.web.app/privasi.html" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="assets/logo/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="assets/logo/favicon-16.png" />
+<link rel="manifest" href="manifest.webmanifest" />
+
+<link rel="stylesheet" href="assets/css/tokens.css" />
+<link rel="stylesheet" href="assets/css/landing.css" />
+<noscript><style>.reveal{opacity:1!important;transform:none!important}</style></noscript>
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="QuParkir — beranda">
+      <span class="mark" aria-hidden="true"><img src="assets/logo/logo-mark-white.png" alt="" width="38" height="38" /></span>
+      <span>QuParkir<small>Parkir Digital</small></span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks" aria-label="Buka menu navigasi">
+      <span></span>
+    </button>
+    <nav class="nav-links" id="navLinks" aria-label="Navigasi utama">
+      <a href="index.html">Beranda</a>
+      <a href="privasi.html">Privasi</a>
+      <a href="syarat.html">Syarat &amp; Ketentuan</a>
+      <a href="refund.html">Pengembalian Dana</a>
+      <a class="btn sm nav-cta" href="app.html">Buka Aplikasi</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="legal-hero">
+  <div class="wrap">
+    <h1>Kebijakan Privasi</h1>
+    <p>Bagaimana QuParkir mengumpulkan, menggunakan, menyimpan, dan melindungi data pribadi Anda saat memakai layanan ini.</p>
+    <p class="updated">Terakhir diperbarui: 9 Agustus 2026</p>
+  </div>
+</section>
+
+<div class="wrap">
+<article class="legal">
+
+<nav class="toc" aria-label="Daftar isi">
+  <h2>Daftar Isi</h2>
+  <ol>
+    <li><a href="#ringkasan">Ringkasan singkat</a></li>
+    <li><a href="#data">Data yang kami kumpulkan</a></li>
+    <li><a href="#penggunaan">Bagaimana data digunakan</a></li>
+    <li><a href="#dasar-hukum">Dasar hukum pemrosesan</a></li>
+    <li><a href="#berbagi">Berbagi data dengan pihak ketiga</a></li>
+    <li><a href="#keamanan">Penyimpanan &amp; keamanan data</a></li>
+    <li><a href="#retensi">Retensi data</a></li>
+    <li><a href="#hak">Hak Anda sebagai subjek data</a></li>
+    <li><a href="#anak">Anak di bawah umur</a></li>
+    <li><a href="#perubahan">Perubahan kebijakan ini</a></li>
+    <li><a href="#kontak">Hubungi kami</a></li>
+  </ol>
+</nav>
+
+<h2 id="ringkasan">1. Ringkasan singkat</h2>
+<p>Versi pendeknya: kami mengumpulkan data seperlunya agar QuParkir bisa bekerja — identitas akun Anda, kendaraan yang didaftarkan, riwayat sesi parkir, dan saldo/transaksi QuPay. Kami tidak menjual data Anda ke pihak mana pun. Data dibagikan hanya kepada penyedia layanan yang benar-benar dibutuhkan agar aplikasi berjalan (Firebase/Google Cloud untuk infrastruktur, dan penyedia gateway pembayaran untuk memproses transaksi). Anda bisa meminta salinan, koreksi, atau penghapusan data Anda kapan saja lewat kontak di bagian bawah halaman ini.</p>
+
+<h2 id="data">2. Data yang kami kumpulkan</h2>
+<table>
+  <thead><tr><th>Kategori</th><th>Data</th><th>Kapan dikumpulkan</th></tr></thead>
+  <tbody>
+    <tr><td>Akun</td><td>Nama, alamat email, foto profil (bila masuk lewat Google)</td><td>Saat mendaftar/masuk</td></tr>
+    <tr><td>Kendaraan</td><td>Plat nomor, jenis kendaraan (motor/mobil)</td><td>Saat menambahkan kendaraan</td></tr>
+    <tr><td>Sesi parkir</td><td>Lokasi, waktu check-in/check-out, kode QR sesi, status verifikasi petugas</td><td>Saat check-in dan check-out</td></tr>
+    <tr><td>Pembayaran</td><td>Saldo QuPay, riwayat top up, riwayat transaksi (nominal, metode, waktu)</td><td>Saat top up atau membayar sesi parkir</td></tr>
+    <tr><td>Lokasi perangkat</td><td>Koordinat GPS — <strong>hanya</strong> saat Anda menekan tombol "Dekat Saya" di menu Cari Parkir; tidak diambil di latar belakang dan tidak disimpan permanen di server kami</td><td>Atas permintaan Anda, per pemakaian</td></tr>
+    <tr><td>Teknis</td><td>Preferensi tampilan, status sesi login — tersimpan lokal di perangkat Anda (localStorage/sessionStorage), bukan di server</td><td>Selama Anda memakai aplikasi</td></tr>
+  </tbody>
+</table>
+
+<h2 id="penggunaan">3. Bagaimana data digunakan</h2>
+<ul>
+  <li>Menyediakan fungsi inti: check-in/check-out QR, perhitungan tarif, e-ticket, dan riwayat parkir.</li>
+  <li>Mencegah penyalahgunaan, termasuk mekanisme anti-dobel-parkir (satu kendaraan hanya boleh punya satu sesi aktif).</li>
+  <li>Memproses pembayaran dan menjaga akurasi saldo QuPay.</li>
+  <li>Menampilkan lokasi kantong parkir terdekat dari posisi Anda, bila fitur itu diaktifkan.</li>
+  <li>Menyusun rekap pendapatan retribusi untuk pihak berwenang (Dinas Perhubungan), dibatasi hanya untuk akun berperan admin.</li>
+</ul>
+
+<h2 id="dasar-hukum">4. Dasar hukum pemrosesan</h2>
+<p>Pemrosesan data pribadi di QuParkir mengacu pada Undang-Undang Nomor 27 Tahun 2022 tentang Pelindungan Data Pribadi. Dasar hukumnya adalah persetujuan Anda saat mendaftar/masuk, dan kebutuhan untuk melaksanakan layanan yang Anda minta (check-in parkir, pembayaran, dsb).</p>
+
+<h2 id="berbagi">5. Berbagi data dengan pihak ketiga</h2>
+<p>Kami tidak menjual atau menyewakan data pribadi Anda. Data dibagikan secara terbatas kepada:</p>
+<ul>
+  <li><strong>Google Firebase / Google Cloud</strong> — penyedia infrastruktur otentikasi dan basis data (Firestore) tempat data QuParkir disimpan.</li>
+  <li><strong>Penyedia gateway pembayaran (mis. Midtrans)</strong> — menerima data transaksi (nominal, ID pesanan) untuk memproses pembayaran QRIS/GoPay. Pada tahap prototipe ini, pembayaran QRIS masih berjalan dalam <strong>mode simulasi</strong>; tidak ada transaksi sungguhan atau data kartu/rekening yang dikirim ke pihak ketiga mana pun.</li>
+  <li><strong>OpenStreetMap</strong> — menampilkan peta kantong parkir; permintaan ubin peta tidak menyertakan data pribadi Anda.</li>
+  <li><strong>Petugas &amp; admin QuParkir</strong> — melihat data sesi parkir yang relevan (plat nomor, lokasi, waktu) sebatas yang diperlukan untuk verifikasi di lapangan.</li>
+</ul>
+<p>Kami dapat mengungkapkan data bila diwajibkan oleh hukum yang berlaku, misalnya permintaan resmi dari aparat penegak hukum.</p>
+
+<h2 id="keamanan">6. Penyimpanan &amp; keamanan data</h2>
+<p>Data disimpan di Firestore (Google Cloud) dengan aturan akses berbasis peran — pengguna hanya bisa membaca/mengubah datanya sendiri, petugas hanya bisa memverifikasi sesi, dan rekap pendapatan hanya bisa dibaca admin. Kata sandi tidak pernah disimpan oleh sistem QuParkir sendiri; autentikasi didelegasikan sepenuhnya ke Firebase Authentication milik Google.</p>
+
+<h2 id="retensi">7. Retensi data</h2>
+<p>Data akun dan kendaraan disimpan selama akun Anda aktif. Riwayat transaksi dan sesi parkir dapat disimpan lebih lama untuk keperluan audit retribusi dan kepatuhan hukum, sesuai kebutuhan operasional Dinas Perhubungan. Jika Anda meminta penghapusan akun, data identitas pribadi akan dihapus dalam waktu wajar, kecuali sebagian catatan transaksi yang wajib disimpan untuk kepentingan audit keuangan.</p>
+
+<h2 id="hak">8. Hak Anda sebagai subjek data</h2>
+<ul>
+  <li><strong>Akses</strong> — meminta salinan data pribadi yang kami simpan tentang Anda.</li>
+  <li><strong>Koreksi</strong> — memperbaiki data yang tidak akurat (nama, plat nomor, dsb — sebagian bisa Anda ubah sendiri lewat menu Akun/Kendaraan).</li>
+  <li><strong>Penghapusan</strong> — meminta akun dan data pribadi Anda dihapus.</li>
+  <li><strong>Menarik persetujuan</strong> — berhenti menggunakan layanan kapan saja.</li>
+  <li><strong>Keberatan &amp; pengaduan</strong> — mengajukan keberatan atas pemrosesan data tertentu, termasuk mengadukannya ke otoritas pelindungan data yang berwenang.</li>
+</ul>
+<p>Untuk menggunakan hak-hak ini, hubungi kami lewat kontak di bagian bawah halaman.</p>
+
+<h2 id="anak">9. Anak di bawah umur</h2>
+<p>QuParkir ditujukan untuk pengguna yang sudah cukup umur untuk mengoperasikan kendaraan bermotor sesuai peraturan lalu lintas yang berlaku di Indonesia. Kami tidak secara sengaja mengumpulkan data dari anak di bawah umur di luar konteks itu.</p>
+
+<h2 id="perubahan">10. Perubahan kebijakan ini</h2>
+<p>Kami dapat memperbarui kebijakan ini dari waktu ke waktu. Tanggal "Terakhir diperbarui" di atas halaman ini akan disesuaikan setiap kali ada perubahan berarti. Penggunaan layanan setelah perubahan berlaku dianggap sebagai persetujuan atas kebijakan yang diperbarui.</p>
+
+<h2 id="kontak">11. Hubungi kami</h2>
+<div class="contact-box">
+  <p>Punya pertanyaan soal privasi, ingin mengakses/menghapus data Anda, atau mengajukan keberatan? Hubungi kami:</p>
+  <ul>
+    <li>📞 <a href="tel:+62895802850204">+62 895-8028-50204</a></li>
+    <li>✉️ <a href="mailto:evoltoteknologi@gmail.com">evoltoteknologi@gmail.com</a></li>
+    <li>📍 Kota Surakarta, Jawa Tengah</li>
+  </ul>
+</div>
+
+</article>
+</div>
+</main>
+
+<footer class="footer footer-min">
+  <div class="wrap footer-min-inner">
+    <a class="brand" href="index.html" aria-label="QuParkir — beranda">
+      <span class="mark" aria-hidden="true"><img src="assets/logo/logo-mark-white.png" alt="" width="38" height="38" /></span>
+      <span>QuParkir<small>Parkir Digital</small></span>
+    </a>
+    <p>Sistem parkir digital berbasis e-ticket dan QR code untuk Kota Surakarta.</p>
+    <hr class="footer-min-rule" />
+    <small>© <span id="year">2026</span> QuParkir · Kota Surakarta</small>
+  </div>
+</footer>
+
+<script src="js/landing.js"></script>
+</body>
+</html>

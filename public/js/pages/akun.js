@@ -139,6 +139,9 @@ export default async function akunPage(view) {
 
     group("Lainnya", [
       item({ ic: "🌐", t: "Tentang QuParkir", s: "Informasi layanan & bantuan", href: "index.html" }),
+      item({ ic: "🔒", t: "Kebijakan Privasi", s: "Data yang kami kumpulkan & hak Anda", href: "privasi.html" }),
+      item({ ic: "📄", t: "Syarat & Ketentuan", s: "Aturan penggunaan layanan", href: "syarat.html" }),
+      item({ ic: "💸", t: "Pengembalian Dana", s: "Kapan & bagaimana refund berlaku", href: "refund.html" }),
       item({ ic: "🚪", t: "Keluar", s: "Akhiri sesi di perangkat ini", kind: "danger", onclick: () => Auth.logout() }),
     ]),
 

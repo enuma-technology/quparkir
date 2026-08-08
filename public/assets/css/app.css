@@ -316,6 +316,8 @@ label.field span{display:block;font-size:.8rem;font-weight:700;margin-bottom:6px
   background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);transition:.16s}
 .auth-links a:hover{background:rgba(255,255,255,.16);color:#fff}
 .auth-note{margin-top:10px;text-align:center;font-size:.72rem;color:#8ea6d6;line-height:1.5}
+.auth-note a{color:#cfe0ff;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.auth-note a:hover{color:#fff}
 /* catatan berbingkai — dipakai gerbang internal agar peringatannya tidak
    tenggelam sebagai teks abu-abu kecil di dasar halaman */
 .auth-notice{margin-top:14px;display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:14px;
