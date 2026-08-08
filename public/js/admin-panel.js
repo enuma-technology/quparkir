@@ -4,7 +4,7 @@
 // #/admin (yang memakai role Firebase); di sini gerbang masuknya
 // username/password statis sesuai permintaan.
 // ============================================================
-import { h, $, rupiah, toast, modal } from "./util.js";
+import { h, $, rupiah, toast, modal, showVersion } from "./util.js";
 import { authShell, field, setError, clearError, busy, markAuthView } from "./parts.js";
 import { initData, DB, MODE } from "./data.js";
 import { initAuth, Auth } from "./auth.js";
@@ -232,7 +232,11 @@ function boot(root) {
       h(".admin-topbar", {}, [
         h(".adm-shell.adm-bar", {}, [
           h("img.adm-logo", { src: "assets/logo/logo-mark-white.png", alt: "", width: 34, height: 34 }),
-          h(".brandbox", {}, [h("b", { text: "Panel Admin" }), h("small", { text: "QuParkir · Surakarta" })]),
+          h(".brandbox", {}, [h("b", { text: "Panel Admin" }), (() => {
+            const s = h("small", { text: "QuParkir · Surakarta" });
+            showVersion(s);   // async — isi " · vN" begitu public/version.json terbaca
+            return s;
+          })()]),
           h("button.btn.sm.ghost", { type: "button", onclick: logout }, "Keluar"),
         ]),
       ]),

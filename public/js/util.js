@@ -79,3 +79,24 @@ export function modal(title, bodyNode, { okText } = {}) {
 
 export const fmtDate = (ts) => new Date(ts).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
 export const uid = () => Math.random().toString(36).slice(2, 10);
+
+// Baca public/version.json (dinaikkan tiap deploy — lihat scripts/bump-version.mjs)
+// dan log ke console. `cache:"no-store"` sengaja dipakai: file ini justru yang
+// harus dipercaya sebagai sumber "build mana yang live", jadi tidak boleh ikut
+// kena cache sama sekali (beda dari kebijakan no-cache biasa di HTTP header-nya).
+let versionPromise;
+export function fetchVersion() {
+  if (!versionPromise) {
+    versionPromise = fetch("version.json", { cache: "no-store" })
+      .then(r => r.json())
+      .then(v => { console.log(`QuParkir v${v.version} (build ${v.buildDate})`); return v; })
+      .catch(() => null);
+  }
+  return versionPromise;
+}
+
+// Tempel " · vN" ke sebuah elemen teks begitu version.json terbaca — dipakai
+// panel admin supaya admin bisa memastikan build yang live sudah yang terbaru.
+export function showVersion(el) {
+  fetchVersion().then(v => { if (v?.version) el.textContent += ` · v${v.version}`; });
+}

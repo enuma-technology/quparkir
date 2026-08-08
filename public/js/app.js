@@ -4,7 +4,7 @@
 import { initData } from "./data.js";
 import { initAuth } from "./auth.js";
 import { route, setNotFound, startRouter, render, current, go } from "./router.js";
-import { $, $$, toast } from "./util.js";
+import { $, $$, toast, fetchVersion } from "./util.js";
 
 import loginPage from "./pages/login.js";
 import registerPage from "./pages/register.js";
@@ -58,6 +58,7 @@ function guard(fn, { roles } = {}) {
 }
 
 async function main() {
+  fetchVersion();   // hanya log ke console — buat memastikan build mana yang live
   await Promise.all([initAuth(), initData()]);
   const { Auth } = await import("./auth.js");
   window.__AUTH = Auth;
