@@ -1,6 +1,7 @@
 # 🛠️ PANDUAN PASANG PEMBAYARAN — Midtrans + Netlify Functions
 
 **Pendamping:** [`PAYMENT.md`](./PAYMENT.md) — riset & alasan di balik pilihan ini.
+**Baru pertama kali pakai Netlify?** Pakai [`NETLIFY-PEMULA.md`](./NETLIFY-PEMULA.md) dulu untuk Langkah 4 — versi klik-klik lewat website, tanpa CLI.
 **Platform:** Netlify Functions (gratis, tanpa kartu kredit, `firebase-admin` jalan langsung).
 **Firebase:** tetap paket **Spark**. Tidak perlu Blaze, tidak ada yang dipindahkan.
 **Status kode di dokumen ini:** kerangka kerja yang belum pernah dijalankan. Wajib diuji di sandbox sebelum dipercaya.
