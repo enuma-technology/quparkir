@@ -1,5 +1,5 @@
 /* ============================================================
-   QuParkir — Design Tokens (palet BIRU, acuan lampiran) + 3 mode UI
+   QuParkir — Design Tokens (palet BIRU, acuan lampiran)
    ============================================================ */
 :root{
   --blue-950:#0b1b4d; --blue-900:#13257a; --blue-800:#1e3a8a;
@@ -22,16 +22,3 @@
   --aurora-opacity:1;
 }
 
-/* GLASS */
-body[data-mode="glass"]{
-  --app-bg:rgba(255,255,255,.10); --card:rgba(255,255,255,.24); --tile:rgba(255,255,255,.18);
-  --text:#eaf2ff; --text-soft:#dbe6fb; --line:rgba(255,255,255,.18);
-  --neu-shadow:none; --aurora-opacity:1;
-}
-/* NEUMORPH */
-body[data-mode="neumorph"]{
-  --app-bg:#e7eefb; --card:#e7eefb; --tile:#e7eefb;
-  --header:linear-gradient(135deg,#3b6fe0,#3aa6e0);
-  --text:#16306b; --text-soft:#5b6b8c; --line:rgba(10,23,80,.06);
-  --aurora-opacity:0;
-}

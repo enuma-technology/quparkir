@@ -1,27 +1,43 @@
 <!doctype html>
 <html lang="id">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>404 — Halaman tidak ditemukan</title>
-    <style>
-      body {
-        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-        margin: 0;
-        background: #0f172a;
-        color: #e2e8f0;
-        text-align: center;
-      }
-    </style>
-  </head>
-  <body>
-    <div>
-      <h1>404</h1>
-      <p>Halaman tidak ditemukan.</p>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#08123a" />
+<meta name="robots" content="noindex" />
+<title>404 — Halaman tidak ditemukan · QuParkir</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/logo/favicon-16.png" />
+<link rel="stylesheet" href="/assets/css/tokens.css" />
+<link rel="stylesheet" href="/assets/css/landing.css" />
+<style>
+  body{min-height:100dvh;display:grid;place-items:center;background:var(--ls-navy);color:#fff;text-align:center;position:relative;overflow:hidden}
+  body::before{
+    content:"";position:absolute;inset:-15%;
+    background:
+      radial-gradient(40% 40% at 20% 25%, #2563eb 0%, transparent 62%),
+      radial-gradient(45% 45% at 80% 20%, #06b6d4 0%, transparent 60%),
+      radial-gradient(50% 50% at 70% 85%, #1d4ed8 0%, transparent 62%);
+    filter:blur(60px) saturate(140%);opacity:.8;
+  }
+  .box{position:relative;z-index:1;padding:32px 22px;max-width:520px}
+  .code{font-size:clamp(4.5rem,18vw,8rem);font-weight:900;line-height:1;letter-spacing:-.05em;
+    background:linear-gradient(100deg,#7dd3fc,#22d3ee 45%,#a5c9ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .box h1{font-size:clamp(1.3rem,4vw,1.8rem);font-weight:900;margin-top:6px}
+  .box p{margin-top:12px;color:#b9caee}
+  .acts{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:28px}
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="code" aria-hidden="true">404</div>
+    <h1>Halaman tidak ditemukan</h1>
+    <p>Tautan yang Anda buka mungkin sudah dipindahkan atau salah ketik.
+       Mari kembali ke jalur yang benar.</p>
+    <div class="acts">
+      <a class="btn" href="/">Kembali ke Beranda</a>
+      <a class="btn outline" href="/app.html">Buka Aplikasi</a>
     </div>
-  </body>
+  </div>
+</body>
 </html>

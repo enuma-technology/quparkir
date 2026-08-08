@@ -1,6 +1,8 @@
 // ============================================================
 // Router — hash sederhana (#/home, #/cari, ...)
 // ============================================================
+import { skeletonNode, AUTH_SKELETONS } from "./skeleton.js";
+
 const routes = {};
 let notFound, currentCleanup;
 
@@ -20,8 +22,21 @@ export async function render() {
   const view = document.getElementById("view");
   view.innerHTML = "";
   view.scrollTop = 0;
-  const cleanup = await handler(view);
-  if (typeof cleanup === "function") currentCleanup = cleanup;
+
+  // Kerangka halaman tujuan menutupi #view selama handler menyiapkan datanya
+  // (saldo, sesi aktif, lokasi …), lalu dilepas. Overlay, bukan sisipan biasa,
+  // supaya halaman bisa menggambar di baliknya tanpa isi bertumpuk. Dipasang
+  // tepat setelah #view dikosongkan agar tidak ada satu frame pun yang kosong.
+  // halaman auth: samakan padding view dengan halaman aslinya (markAuthView)
+  if (AUTH_SKELETONS.includes(path)) view.classList.add("authView");
+  const skel = skeletonNode(path, { overlay: true });
+  view.append(skel);
+  try {
+    const cleanup = await handler(view);
+    if (typeof cleanup === "function") currentCleanup = cleanup;
+  } finally {
+    skel.remove();
+  }
 }
 
 export function startRouter() {

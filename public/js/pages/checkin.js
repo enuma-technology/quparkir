@@ -45,13 +45,14 @@ export default async function checkinPage(view) {
   }
   function renderLoc() {
     locSel.innerHTML = "";
+    // ?loc= dari halaman Cari bisa menunjuk lokasi yang sudah dihapus → jatuhkan ke pilihan pertama
+    if (locs.length && !locs.some(l => l.id === selLoc)) selLoc = locs[0].id;
     locs.forEach(l => {
-      const avail = (l.capMotor - l.occMotor) + (l.capCar - l.occCar);
+      const avail = ((l.capMotor || 0) - (l.occMotor || 0)) + ((l.capCar || 0) - (l.occCar || 0));
       const o = h("option", { value: l.id }, `${l.name} — sisa ${avail}`);
       if (l.id === selLoc) o.selected = true;
       locSel.append(o);
     });
-    if (!selLoc && locs[0]) selLoc = locs[0].id;
     locSel.onchange = () => (selLoc = locSel.value);
   }
 

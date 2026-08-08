@@ -3,47 +3,534 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#1d4ed8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net https://apis.google.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://api.qrserver.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://api.qrserver.com; frame-src https://quparkir.firebaseapp.com https://accounts.google.com; worker-src 'self'; media-src 'self' blob:; base-uri 'self'; object-src 'none'" />
-<title>QuParkir — Parkir Digital Surakarta</title>
-<link rel="manifest" href="manifest.webmanifest" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🅿️</text></svg>" />
+<meta name="theme-color" content="#08123a" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'" />
 
-<!-- OpenStreetMap / Leaflet -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<title>QuParkir — Sistem Parkir Digital E-Ticket & QR Code untuk Kota Surakarta</title>
+<meta name="description" content="QuParkir adalah sistem parkir digital end-to-end berbasis e-ticket QR code: check-in cepat, pembayaran cashless, verifikasi petugas, anti-fraud, dan dashboard transparansi retribusi real-time untuk pemerintah kota." />
+<meta name="keywords" content="parkir digital, e-parking, e-ticket, QR code, retribusi parkir, Surakarta, smart parking, QuParkir" />
+<meta name="author" content="QuParkir" />
+<link rel="canonical" href="https://quparkir.web.app/" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="QuParkir" />
+<meta property="og:locale" content="id_ID" />
+<meta property="og:title" content="QuParkir — Parkir Digital Transparan untuk Kota Surakarta" />
+<meta property="og:description" content="E-ticket QR code, anti double-parking, verifikasi petugas, dan dashboard retribusi real-time dalam satu ekosistem mandiri." />
+<meta property="og:url" content="https://quparkir.web.app/" />
+<meta property="og:image" content="https://quparkir.web.app/assets/logo/og-image.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Logo QuParkir — Parkir Digital" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="QuParkir — Parkir Digital Transparan" />
+<meta name="twitter:description" content="Satu ekosistem end-to-end: pelanggan, petugas, dan pemerintah kota." />
+<meta name="twitter:image" content="https://quparkir.web.app/assets/logo/og-image.png" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="assets/logo/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="assets/logo/favicon-16.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="assets/logo/apple-touch-icon.png" />
+<link rel="manifest" href="manifest.webmanifest" />
 
 <link rel="stylesheet" href="assets/css/tokens.css" />
-<link rel="stylesheet" href="assets/css/app.css" />
+<link rel="stylesheet" href="assets/css/landing.css" />
+
+<!-- Tanpa JavaScript: seluruh konten tetap tampil (animasi masuk dinonaktifkan) -->
+<noscript><style>.reveal{opacity:1!important;transform:none!important}</style></noscript>
 </head>
-<body data-mode="aurora">
-  <div class="aurora" aria-hidden="true"></div>
 
-  <!-- App column -->
-  <div class="app" id="app">
-    <div class="scroll" id="view"><div class="skel-page"><div class="skel skel-header"></div><div class="skel skel-card"></div><div class="skel-row"><div class="skel skel-tile"></div><div class="skel skel-tile"></div><div class="skel skel-tile"></div><div class="skel skel-tile"></div></div><div class="skel skel-card"></div><div class="skel skel-card short"></div></div></div>
+<body>
 
-    <!-- Bottom nav (disembunyikan di halaman login) -->
-    <nav class="tabbar" id="tabbar" aria-label="Navigasi utama" hidden>
-      <button data-go="#/home" class="active"><span>🏠</span><small>Home</small></button>
-      <button data-go="#/riwayat"><span>🕘</span><small>Aktivitas</small></button>
-      <div class="fab-slot"><button class="fab" id="fabScan" title="Scan & Check-in">▣</button></div>
-      <button data-go="#/cari"><span>🗺️</span><small>Cari</small></button>
-      <button data-go="#/akun"><span>👤</span><small>Akun</small></button>
+<!-- ============================ NAVBAR ============================ -->
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#beranda" aria-label="QuParkir — beranda">
+      <span class="mark" aria-hidden="true"><img src="assets/logo/logo-mark-white.png" alt="" width="38" height="38" /></span>
+      <span>QuParkir<small>Parkir Digital</small></span>
+    </a>
+
+    <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks" aria-label="Buka menu navigasi">
+      <span></span>
+    </button>
+
+    <nav class="nav-links" id="navLinks" aria-label="Navigasi utama">
+      <a href="#masalah">Masalah</a>
+      <a href="#fitur">Fitur</a>
+      <a href="#cara-kerja">Cara Kerja</a>
+      <a href="#peran">Untuk Siapa</a>
+      <a href="#riset">Riset</a>
+      <a href="#faq">FAQ</a>
+      <a class="btn sm nav-cta" href="app.html">Buka Aplikasi</a>
     </nav>
   </div>
+</header>
 
-  <!-- mode switcher -->
-  <div class="modefab" id="modefab" role="tablist" aria-label="Mode tampilan">
-    <button data-set="aurora" class="active">Aurora</button>
-    <button data-set="glass">Glass</button>
-    <button data-set="neumorph">Neumorph</button>
+<main>
+
+<!-- ============================= HERO ============================= -->
+<section class="hero" id="beranda">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <span class="eyebrow on-dark">🏙️ Studi Kasus Kota Surakarta</span>
+        <h1>Parkir jadi <span class="grad">digital, cepat,</span> dan transparan.</h1>
+        <p class="sub">
+          QuParkir menyatukan e-ticket QR code, pembayaran cashless, verifikasi petugas,
+          dan dashboard retribusi <em>real-time</em> dalam satu ekosistem mandiri —
+          dari transaksi di tepi jalan hingga laporan pendapatan daerah.
+        </p>
+
+        <div class="hero-actions">
+          <a class="btn" href="app.html">Buka Aplikasi&nbsp;→</a>
+          <a class="btn outline" href="#cara-kerja">Lihat Cara Kerja</a>
+        </div>
+
+        <p class="hero-note">
+          <span>✅ <b>Tanpa instalasi</b> — jalan di browser (PWA)</span>
+          <span>🔒 <b>Data terenkripsi</b> &amp; aturan akses ketat</span>
+        </p>
+      </div>
+
+      <!-- mockup aplikasi -->
+      <div class="phone-stage">
+        <div class="chip c1" aria-hidden="true">
+          <em>⏱️</em><span>Check-in<small>&lt; 30 detik</small></span>
+        </div>
+        <div class="chip c2" aria-hidden="true">
+          <em>📈</em><span>Retribusi<small>terpantau real-time</small></span>
+        </div>
+
+        <div class="phone" role="img" aria-label="Pratinjau tampilan aplikasi QuParkir pada ponsel">
+          <span class="notch" aria-hidden="true"></span>
+          <div class="screen">
+            <div class="ph-head">
+              <div class="ph-brand"><img src="assets/logo/logo-mark-white.png" alt="" width="18" height="18" /> QuParkir</div>
+              <div class="ph-hi">
+                <div>
+                  <h4>Hi, Warga Solo 👋</h4>
+                  <p>Mau parkir di mana hari ini?</p>
+                </div>
+                <span class="ph-points">⭐ 120 Poin</span>
+              </div>
+            </div>
+
+            <div class="ph-wallet">
+              <span class="wl">QuPay</span>
+              <span class="wn">QuPay<small>Saldo parkir cashless</small></span>
+              <span class="wb">Rp 75.000</span>
+            </div>
+
+            <div class="ph-grid">
+              <i class="acc"><em>📷</em>Scan QR</i>
+              <i><em>🅿️</em>Cari</i>
+              <i><em>🚗</em>Kendaraan</i>
+              <i><em>🎫</em>E-Ticket</i>
+            </div>
+
+            <div class="ph-promo">
+              <span class="kik">BARU</span>
+              <b>Cashback 50%</b>
+              <span>Transaksi parkir pakai QuPay</span>
+            </div>
+
+            <div class="ph-live">
+              <span class="dot" aria-hidden="true"></span>
+              <span>
+                <span class="t">Parkir aktif · Solo Grand Mall</span>
+                <span class="s">AD 1234 XY · 01:12 berjalan</span>
+              </span>
+              <span class="amt">Rp 3.000</span>
+            </div>
+
+            <div class="ph-tab" aria-hidden="true">
+              <i class="on">🏠</i><i>🕘</i>
+              <span class="fab">▣</span>
+              <i>🗺️</i><i>👤</i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- statistik -->
+    <div class="hero-stats">
+      <div class="hstat"><b data-count="34" data-suffix="+">0</b><span>studi ilmiah ditinjau (SLR)</span></div>
+      <div class="hstat"><b data-count="3">0</b><span>peran terintegrasi end-to-end</span></div>
+      <div class="hstat"><b data-count="30" data-suffix=" dtk">0</b><span>rata-rata proses check-in</span></div>
+      <div class="hstat"><b data-count="100" data-suffix="%">0</b><span>digital &amp; tanpa vendor terkunci</span></div>
+    </div>
   </div>
+</section>
 
-  <!-- toast + modal host -->
-  <div id="toast" class="toast"></div>
-  <div id="modalHost"></div>
+<!-- =========================== MASALAH ============================ -->
+<section class="section soft" id="masalah">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">⚠️ Latar Belakang</span>
+      <h2 class="h2">Kenapa parkir konvensional perlu dibenahi?</h2>
+      <p class="lead">
+        Retribusi parkir adalah sumber Pendapatan Asli Daerah. Namun pada sistem karcis manual,
+        pengawasan transaksi lapangan lemah — dan itu berujung pada empat masalah klasik.
+      </p>
+    </div>
 
-  <script type="module" src="js/app.js"></script>
+    <div class="grid-4">
+      <article class="card problem reveal">
+        <div class="ic" aria-hidden="true">💸</div>
+        <h3>Kebocoran retribusi</h3>
+        <p>Transaksi tunai tanpa jejak digital membuat setoran ke kas daerah sulit diaudit dan tidak optimal.</p>
+      </article>
+      <article class="card problem reveal" data-delay="90">
+        <div class="ic" aria-hidden="true">🚫</div>
+        <h3>Parkir ilegal &amp; sengketa tarif</h3>
+        <p>Tanpa identitas petugas terverifikasi dan tarif baku yang terbaca, perselisihan di lapangan terus berulang.</p>
+      </article>
+      <article class="card problem reveal" data-delay="180">
+        <div class="ic" aria-hidden="true">📵</div>
+        <h3>Adopsi digital rendah</h3>
+        <p>Terminal elektronik tersedia, tetapi pengguna tetap memilih tunai karena alurnya dianggap merepotkan.</p>
+      </article>
+      <article class="card problem reveal" data-delay="270">
+        <div class="ic" aria-hidden="true">🔗</div>
+        <h3>Ketergantungan vendor</h3>
+        <p>Sistem tertutup membuat layanan rapuh: saat vendor bermasalah, pendapatan daerah ikut terhenti.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ FITUR ============================= -->
+<section class="section" id="fitur">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">✨ Solusi QuParkir</span>
+      <h2 class="h2">Satu ekosistem, dari tepi jalan sampai dashboard</h2>
+      <p class="lead">
+        Setiap fitur dirancang untuk menutup satu celah nyata — bukan sekadar memindahkan karcis ke layar.
+      </p>
+    </div>
+
+    <div class="grid-3">
+      <article class="card feature reveal">
+        <span class="no" aria-hidden="true">01</span>
+        <div class="ic" aria-hidden="true">🎫</div>
+        <h3>E-Ticket QR unik</h3>
+        <p>Setiap sesi parkir menghasilkan satu tiket digital dengan ID unik — menjadi sumber kebenaran tunggal saat audit retribusi.</p>
+        <div class="tagrow"><span class="tag">Anti duplikasi</span><span class="tag">Jejak audit</span></div>
+      </article>
+
+      <article class="card feature reveal" data-delay="80">
+        <span class="no" aria-hidden="true">02</span>
+        <div class="ic" aria-hidden="true">🗺️</div>
+        <h3>Peta &amp; slot live</h3>
+        <p>Peta OpenStreetMap menampilkan kantong parkir terdekat lengkap dengan sisa slot motor/mobil yang diperbarui langsung.</p>
+        <div class="tagrow"><span class="tag">Geolokasi</span><span class="tag">Rute Maps</span></div>
+      </article>
+
+      <article class="card feature reveal" data-delay="160">
+        <span class="no" aria-hidden="true">03</span>
+        <div class="ic" aria-hidden="true">💳</div>
+        <h3>Pembayaran cashless</h3>
+        <p>Bayar dengan saldo QuPay atau QRIS. Tarif dihitung otomatis per durasi, sehingga tidak ada lagi tawar-menawar.</p>
+        <div class="tagrow"><span class="tag">QuPay</span><span class="tag">QRIS</span><span class="tag">Smart tarif</span></div>
+      </article>
+
+      <article class="card feature reveal" data-delay="240">
+        <span class="no" aria-hidden="true">04</span>
+        <div class="ic" aria-hidden="true">🛡️</div>
+        <h3>Anti-fraud bawaan</h3>
+        <p>Anti double-parking, validasi <em>checkout</em> transaksional, dan larangan verifikasi mandiri mencegah manipulasi sesi.</p>
+        <div class="tagrow"><span class="tag">Transaksi atomik</span><span class="tag">Guard peran</span></div>
+      </article>
+
+      <article class="card feature reveal" data-delay="320">
+        <span class="no" aria-hidden="true">05</span>
+        <div class="ic" aria-hidden="true">🪪</div>
+        <h3>KTA digital petugas</h3>
+        <p>Petugas memiliki kartu identitas berbasis QR yang dapat dipindai warga — memastikan pungutan dilakukan orang resmi.</p>
+        <div class="tagrow"><span class="tag">Verifikasi</span><span class="tag">Akuntabel</span></div>
+      </article>
+
+      <article class="card feature reveal" data-delay="400">
+        <span class="no" aria-hidden="true">06</span>
+        <div class="ic" aria-hidden="true">📊</div>
+        <h3>Dashboard transparansi</h3>
+        <p>Pemerintah kota memantau pendapatan harian, tingkat keterisian, dan rekap transaksi secara <em>real-time</em>.</p>
+        <div class="tagrow"><span class="tag">Realtime</span><span class="tag">Rekap PAD</span></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ========================== CARA KERJA ========================== -->
+<section class="section soft" id="cara-kerja">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">🧭 Alur Pengguna</span>
+      <h2 class="h2">Empat langkah, selesai</h2>
+      <p class="lead">Alur sengaja dibuat serendah mungkin friksinya agar warga mau beralih dari tunai.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step reveal">
+        <div class="n" aria-hidden="true">📷<b>1</b></div>
+        <h3>Scan QR lokasi</h3>
+        <p>Pindai kode QR di gerbang kantong parkir untuk membuka sesi.</p>
+      </div>
+      <div class="step reveal" data-delay="110">
+        <div class="n" aria-hidden="true">🚗<b>2</b></div>
+        <h3>Parkir &amp; pantau</h3>
+        <p>Durasi dan estimasi tarif berjalan langsung di layar e-ticket.</p>
+      </div>
+      <div class="step reveal" data-delay="220">
+        <div class="n" aria-hidden="true">✅<b>3</b></div>
+        <h3>Check-out</h3>
+        <p>Petugas memverifikasi tiket, sistem menutup sesi secara atomik.</p>
+      </div>
+      <div class="step reveal" data-delay="330">
+        <div class="n" aria-hidden="true">🧾<b>4</b></div>
+        <h3>Bayar &amp; struk</h3>
+        <p>Saldo terpotong otomatis, struk digital tersimpan di riwayat.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== UNTUK SIAPA =========================== -->
+<section class="section" id="peran">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">👥 Tiga Peran</span>
+      <h2 class="h2">Dirancang untuk semua pihak di ekosistem parkir</h2>
+      <p class="lead">Satu aplikasi, tiga sudut pandang yang saling mengunci — itulah kunci transparansinya.</p>
+    </div>
+
+    <div class="tabs" id="roleTabs" role="tablist" aria-label="Peran pengguna">
+      <button role="tab" id="tab-warga" aria-controls="panel-warga" aria-selected="true" tabindex="0">🚗 Pelanggan</button>
+      <button role="tab" id="tab-petugas" aria-controls="panel-petugas" aria-selected="false" tabindex="-1">🦺 Petugas</button>
+      <button role="tab" id="tab-pemkot" aria-controls="panel-pemkot" aria-selected="false" tabindex="-1">🏛️ Pemerintah Kota</button>
+    </div>
+
+    <div class="panel" id="panel-warga" role="tabpanel" aria-labelledby="tab-warga">
+      <div class="pic">
+        <span class="big" aria-hidden="true">🚗</span>
+        <h3>Pelanggan</h3>
+        <p>Parkir tanpa uang receh, tanpa karcis hilang, tanpa tarif dadakan.</p>
+      </div>
+      <ul class="checklist">
+        <li><span class="ck">✓</span><span><b>Cari parkir terdekat</b><span>Peta live dengan sisa slot dan tarif per jam yang jelas.</span></span></li>
+        <li><span class="ck">✓</span><span><b>Kelola kendaraan</b><span>Simpan beberapa plat motor/mobil dan pilih saat check-in.</span></span></li>
+        <li><span class="ck">✓</span><span><b>E-ticket &amp; timer</b><span>Durasi berjalan dan estimasi biaya terlihat setiap saat.</span></span></li>
+        <li><span class="ck">✓</span><span><b>Riwayat &amp; struk</b><span>Semua transaksi tersimpan rapi untuk bukti pembayaran.</span></span></li>
+        <li><span class="ck">✓</span><span><b>Poin &amp; promo</b><span>Insentif untuk mendorong kebiasaan bayar nontunai.</span></span></li>
+      </ul>
+    </div>
+
+    <div class="panel" id="panel-petugas" role="tabpanel" aria-labelledby="tab-petugas" hidden>
+      <div class="pic alt">
+        <span class="big" aria-hidden="true">🦺</span>
+        <h3>Petugas Lapangan</h3>
+        <p>Alat kerja digital yang melindungi petugas dari tuduhan pungutan liar.</p>
+      </div>
+      <ul class="checklist">
+        <li><span class="ck">✓</span><span><b>Monitoring kendaraan aktif</b><span>Daftar sesi berjalan di lokasi tugas, diperbarui otomatis.</span></span></li>
+        <li><span class="ck">✓</span><span><b>Scan e-ticket</b><span>Verifikasi keabsahan tiket warga hanya dengan satu pindaian.</span></span></li>
+        <li><span class="ck">✓</span><span><b>KTA digital ber-QR</b><span>Identitas resmi yang bisa diperiksa langsung oleh warga.</span></span></li>
+        <li><span class="ck">✓</span><span><b>Tanpa uang tunai</b><span>Mengurangi risiko selisih setoran dan sengketa tarif.</span></span></li>
+      </ul>
+    </div>
+
+    <div class="panel" id="panel-pemkot" role="tabpanel" aria-labelledby="tab-pemkot" hidden>
+      <div class="pic gov">
+        <span class="big" aria-hidden="true">🏛️</span>
+        <h3>Pemerintah Kota</h3>
+        <p>Data retribusi yang bisa dipertanggungjawabkan, tanpa menunggu rekap manual.</p>
+      </div>
+      <ul class="checklist">
+        <li><span class="ck">✓</span><span><b>Pendapatan hari ini</b><span>Akumulasi retribusi bergerak seiring transaksi lapangan.</span></span></li>
+        <li><span class="ck">✓</span><span><b>Tingkat keterisian</b><span>Pantau kepadatan tiap kantong parkir untuk penataan kota.</span></span></li>
+        <li><span class="ck">✓</span><span><b>Kelola kapasitas &amp; tarif</b><span>Tambah lokasi, atur kuota motor/mobil, dan generate QR lokasi.</span></span></li>
+        <li><span class="ck">✓</span><span><b>Rekap transaksi</b><span>Basis audit dengan ID tiket unik per sesi parkir.</span></span></li>
+        <li><span class="ck">✓</span><span><b>Sistem mandiri</b><span>Dibangun di atas standar terbuka — bebas dari kunci vendor.</span></span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ RISET ============================= -->
+<section class="section dark" id="riset">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow on-dark">🔬 Landasan Ilmiah</span>
+      <h2 class="h2">Dibangun dari kesenjangan riset yang nyata</h2>
+      <p class="lead">
+        QuParkir lahir dari tinjauan pustaka sistematis (SLR) terhadap 34 studi inti dengan alur PRISMA.
+        Empat kesenjangan yang ditemukan diterjemahkan langsung menjadi fitur.
+      </p>
+    </div>
+
+    <div class="gapgrid">
+      <article class="gap reveal">
+        <span class="code">GAP 01</span>
+        <h4>Integrasi end-to-end &amp; kemandirian</h4>
+        <p>Studi terdahulu berhenti di level lot atau pembayaran; sistem terminal elektronik rapuh karena terkunci vendor.</p>
+        <p class="arrow">→ <b>Dashboard admin real-time</b> dengan sinkronisasi langsung, tanpa perantara tertutup.</p>
+      </article>
+      <article class="gap reveal" data-delay="90">
+        <span class="code">GAP 02</span>
+        <h4>Kota menengah &amp; adopsi</h4>
+        <p>Pembayaran nontunai parkir tepi jalan masih baru, dan warga cenderung bertahan pada tunai.</p>
+        <p class="arrow">→ <b>E-ticket QR + smart tarif</b> dengan alur rendah-friksi khas aplikasi konsumen.</p>
+      </article>
+      <article class="gap reveal" data-delay="180">
+        <span class="code">GAP 03</span>
+        <h4>Verifikasi &amp; adaptasi petugas</h4>
+        <p>Hambatan SDM dan sengketa petugas–warga jarang tersentuh solusi teknologi parkir.</p>
+        <p class="arrow">→ <b>KTA QR petugas</b> dengan status verifikasi sebelum boleh memvalidasi transaksi.</p>
+      </article>
+      <article class="gap reveal" data-delay="270">
+        <span class="code">GAP 04</span>
+        <h4>Anti-fraud &amp; transparansi</h4>
+        <p>E-parking diharapkan menekan kebocoran, namun mekanisme pencegahannya jarang dirinci.</p>
+        <p class="arrow">→ <b>Anti double-parking + validasi checkout</b> dan monitoring pendapatan terbuka.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ========================== TEKNOLOGI =========================== -->
+<section class="section soft" id="teknologi">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">⚙️ Teknologi</span>
+      <h2 class="h2">Ringan, terbuka, dan siap dioperasikan sendiri</h2>
+      <p class="lead">
+        Tanpa framework berat — aplikasi berjalan sebagai PWA di browser mana pun,
+        sehingga biaya adopsi di lapangan tetap rendah.
+      </p>
+    </div>
+
+    <div class="techrow reveal">
+      <div class="tech"><em>🌐</em><span>PWA<small>Offline-ready</small></span></div>
+      <div class="tech"><em>⚡</em><span>Vanilla JS<small>Modular ES</small></span></div>
+      <div class="tech"><em>🔥</em><span>Firebase<small>Auth &amp; Firestore</small></span></div>
+      <div class="tech"><em>🗺️</em><span>OpenStreetMap<small>Leaflet</small></span></div>
+      <div class="tech"><em>▣</em><span>QR Code<small>Generate &amp; scan</small></span></div>
+      <div class="tech"><em>🔐</em><span>Security Rules<small>Guard per peran</small></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= FAQ ============================== -->
+<section class="section" id="faq">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">❓ Pertanyaan Umum</span>
+      <h2 class="h2">Hal yang paling sering ditanyakan</h2>
+    </div>
+
+    <div class="faq reveal">
+      <details open>
+        <summary>Apakah QuParkir perlu diunduh dari toko aplikasi?</summary>
+        <p class="ans">Tidak. QuParkir adalah aplikasi web progresif (PWA) — cukup buka tautannya di browser.
+          Bila ingin, halaman dapat dipasang ke layar utama seperti aplikasi biasa.</p>
+      </details>
+      <details>
+        <summary>Bagaimana kalau ponsel saya tidak bisa memindai QR?</summary>
+        <p class="ans">Kode lokasi dapat dimasukkan manual saat check-in, dan petugas di lokasi dapat membantu
+          memvalidasi sesi melalui perangkatnya.</p>
+      </details>
+      <details>
+        <summary>Bagaimana sistem mencegah satu kendaraan parkir ganda?</summary>
+        <p class="ans">Setiap kendaraan hanya boleh memiliki satu sesi aktif. Percobaan check-in kedua ditolak,
+          dan proses check-out dijalankan sebagai transaksi atomik agar tidak bisa diproses dua kali.</p>
+      </details>
+      <details>
+        <summary>Apakah pembayaran sudah memakai gateway sungguhan?</summary>
+        <p class="ans">Pada tahap prototipe, pembayaran QRIS berjalan dalam mode simulasi dengan arsitektur yang
+          sudah siap disambungkan ke gateway pembayaran nyata.</p>
+      </details>
+      <details>
+        <summary>Siapa yang dapat melihat data pendapatan retribusi?</summary>
+        <p class="ans">Rekap pendapatan hanya dapat diakses akun dengan peran admin. Peran tidak dapat diubah dari
+          sisi klien dan dilindungi aturan keamanan basis data.</p>
+      </details>
+      <details>
+        <summary>Bisakah sistem ini dipakai kota selain Surakarta?</summary>
+        <p class="ans">Bisa. Lokasi, kapasitas, dan tarif bersifat konfigurabel melalui dashboard admin,
+          sehingga model yang sama dapat direplikasi ke kota lain.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= CTA ============================== -->
+<section class="section" id="kontak" style="padding-top:0">
+  <div class="wrap">
+    <div class="cta-band reveal">
+      <h2>Siap mencoba parkir yang lebih tertib?</h2>
+      <p>Masuk sebagai tamu untuk menjelajah aplikasi tanpa perlu mendaftar terlebih dahulu.</p>
+      <div class="cta-actions">
+        <a class="btn ghost" href="app.html#/login">Coba Sekarang</a>
+        <a class="btn outline" href="#fitur">Pelajari Fitur</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============================ FOOTER ============================ -->
+<footer class="footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <div class="brand">
+          <span class="mark" aria-hidden="true"><img src="assets/logo/logo-mark-white.png" alt="" width="38" height="38" /></span>
+          <span>QuParkir<small>Parkir Digital</small></span>
+        </div>
+        <p>Sistem parkir digital berbasis e-ticket dan QR code untuk meningkatkan transparansi
+          retribusi serta mengurangi praktik parkir ilegal di Kota Surakarta.</p>
+      </div>
+
+      <div>
+        <h4>Produk</h4>
+        <ul>
+          <li><a href="#fitur">Fitur</a></li>
+          <li><a href="#cara-kerja">Cara Kerja</a></li>
+          <li><a href="#peran">Untuk Siapa</a></li>
+          <li><a href="app.html">Buka Aplikasi</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h4>Informasi</h4>
+        <ul>
+          <li><a href="#masalah">Latar Belakang</a></li>
+          <li><a href="#riset">Landasan Riset</a></li>
+          <li><a href="#teknologi">Teknologi</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h4>Kontak</h4>
+        <ul>
+          <li>📍 Kota Surakarta, Jawa Tengah</li>
+          <li><a href="mailto:halo@quparkir.id">halo@quparkir.id</a></li>
+          <li>🕗 Senin–Jumat, 08.00–16.00 WIB</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="foot-bottom">
+      <span>© <span id="year">2026</span> QuParkir · Prototipe penelitian</span>
+      <span class="spacer"></span>
+      <span class="badge-live"><i aria-hidden="true"></i> Sistem aktif</span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/landing.js"></script>
 </body>
 </html>

@@ -3,16 +3,28 @@
 //   - DEMO (localStorage)  → default, jalan tanpa config
 //   - Firebase (Firestore) → otomatis saat config.js sudah diisi
 // ============================================================
-import { firebaseConfig, USE_FIREBASE } from "./config.js";
+import { firebaseConfig, USE_FIREBASE, USE_EMULATOR, EMULATOR } from "./config.js";
 import { uid as randId, hitungTarif } from "./util.js";
 
+// Koordinat diverifikasi via Wikipedia + OpenStreetMap/Nominatim (Agustus 2026).
+// Presisi 5 desimal ≈ 1 meter — dipakai langsung sebagai tujuan rute Google Maps,
+// jadi jangan dibulatkan lagi saat mengubah data ini.
 export const SEED_LOCATIONS = [
-  { id: "loc-square",   name: "Solo Square",          lat: -7.5599, lng: 110.7892, capMotor: 80, capCar: 60, occMotor: 41, occCar: 22, tarif: { motor: 2000, mobil: 3000 } },
-  { id: "loc-grand",    name: "Solo Grand Mall",      lat: -7.5663, lng: 110.8126, capMotor: 120, capCar: 90, occMotor: 70, occCar: 51, tarif: { motor: 2000, mobil: 3000 } },
-  { id: "loc-gede",     name: "Pasar Gede",           lat: -7.5697, lng: 110.8307, capMotor: 60, capCar: 25, occMotor: 52, occCar: 20, tarif: { motor: 2000, mobil: 3000 } },
-  { id: "loc-vasten",   name: "Benteng Vastenburg",   lat: -7.5719, lng: 110.8290, capMotor: 50, capCar: 30, occMotor: 8,  occCar: 4,  tarif: { motor: 2000, mobil: 2000 } },
-  { id: "loc-balapan",  name: "Stasiun Balapan",      lat: -7.5562, lng: 110.8190, capMotor: 70, capCar: 40, occMotor: 66, occCar: 35, tarif: { motor: 2000, mobil: 3000 } },
-  { id: "loc-uns",      name: "Kampus UNS",           lat: -7.5599, lng: 110.8561, capMotor: 200, capCar: 80, occMotor: 90, occCar: 30, tarif: { motor: 1000, mobil: 2000 } },
+  { id: "loc-square",   name: "Solo Square",          address: "Jl. Slamet Riyadi No.451-455, Pajang, Laweyan, Surakarta 57146", lat: -7.56048, lng: 110.78882, capMotor: 80, capCar: 60, occMotor: 41, occCar: 22, tarif: { motor: 2000, mobil: 3000 } },
+  { id: "loc-grand",    name: "Solo Grand Mall",      address: "Jl. Slamet Riyadi No.273, Penumping, Laweyan, Surakarta 57141", lat: -7.56628, lng: 110.80754, capMotor: 120, capCar: 90, occMotor: 70, occCar: 51, tarif: { motor: 2000, mobil: 3000 } },
+  { id: "loc-gede",     name: "Pasar Gede",           address: "Jl. Urip Sumoharjo No.1, Sudiroprajan, Jebres, Surakarta 57121", lat: -7.56910, lng: 110.83185, capMotor: 60, capCar: 25, occMotor: 52, occCar: 20, tarif: { motor: 2000, mobil: 3000 } },
+  { id: "loc-vasten",   name: "Benteng Vastenburg",   address: "Jl. Jend. Sudirman, Kedung Lumbu, Pasar Kliwon, Surakarta 57133", lat: -7.57206, lng: 110.83128, capMotor: 50, capCar: 30, occMotor: 8,  occCar: 4,  tarif: { motor: 2000, mobil: 2000 } },
+  { id: "loc-balapan",  name: "Stasiun Balapan",      address: "Jl. Wolter Monginsidi No.112, Kestalan, Banjarsari, Surakarta 57133", lat: -7.55675, lng: 110.82140, capMotor: 70, capCar: 40, occMotor: 66, occCar: 35, tarif: { motor: 2000, mobil: 3000 } },
+  { id: "loc-uns",      name: "Kampus UNS",           address: "Jl. Ir. Sutami No.36A, Kentingan, Jebres, Surakarta 57126", lat: -7.55993, lng: 110.85665, capMotor: 200, capCar: 80, occMotor: 90, occCar: 30, tarif: { motor: 1000, mobil: 2000 } },
+];
+
+// Isi awal Promo (dipakai saat storage/koleksi masih kosong). Admin bisa
+// menambah/mengubah/menghapus lewat admin.html — tag & alt-style card dibuat
+// otomatis oleh UI, admin cukup mengisi teks.
+export const DEFAULT_PROMOS = [
+  { id: "promo-cashback", tag: "BARU",  title: "Cashback 50%",         desc: "Semua transaksi parkir pakai QuPay · 27 Feb – 31 Agu 2026" },
+  { id: "promo-admin",    tag: "HEMAT", title: "Gratis Biaya Admin",   desc: "Top up QuPay pertama tanpa biaya tambahan" },
+  { id: "promo-poin",     tag: "POIN",  title: "2× Poin",              desc: "Check-in di kantong parkir favoritmu akhir pekan ini" },
 ];
 
 export let DB;          // diisi sesuai backend
@@ -24,10 +36,22 @@ function demoBackend() {
   const load = () => JSON.parse(localStorage.getItem(KEY) || "null");
   let s = load() || {
     locations: structuredClone(SEED_LOCATIONS),
+    promos: structuredClone(DEFAULT_PROMOS),
+    banners: [],
     vehicles: {}, sessions: [], transactions: [], officers: [
       { id: "ofc-1", name: "Budi Santoso", code: "PTG-001", locationId: "loc-square", active: true },
     ], profiles: {}, wallet: {},
   };
+  // Data lama di localStorage tidak ikut ter-seed ulang. Segarkan hanya field
+  // geografis dari SEED agar koreksi koordinat sampai ke user lama tanpa
+  // menghapus sesi/transaksi mereka; dan lengkapi koleksi baru (promo/banner)
+  // untuk sesi lama yang dibuat sebelum fitur ini ada.
+  for (const seed of SEED_LOCATIONS) {
+    const cur = s.locations.find(l => l.id === seed.id);
+    if (cur) Object.assign(cur, { lat: seed.lat, lng: seed.lng, address: seed.address });
+  }
+  s.promos ||= structuredClone(DEFAULT_PROMOS);
+  s.banners ||= [];
   const save = () => localStorage.setItem(KEY, JSON.stringify(s));
   save();
   const L = new Set();
@@ -40,7 +64,21 @@ function demoBackend() {
       subscribe: (cb) => sub(x => x.locations, cb),
       get: (id) => s.locations.find(l => l.id === id),
       update: (id, patch) => { Object.assign(s.locations.find(l => l.id === id), patch); emit(); },
+      add: (loc) => { const l = { occMotor: 0, occCar: 0, ...loc, id: loc.id || randId() }; s.locations.push(l); emit(); return l; },
+      remove: (id) => { s.locations = s.locations.filter(l => l.id !== id); emit(); },
       seed: async () => { if (!s.locations.length) { s.locations = structuredClone(SEED_LOCATIONS); emit(); } },
+    },
+    promos: {
+      subscribe: (cb) => sub(x => x.promos, cb),
+      add: (p) => { const row = { ...p, id: p.id || randId() }; s.promos.push(row); emit(); return row; },
+      update: (id, patch) => { const p = s.promos.find(x => x.id === id); if (p) Object.assign(p, patch); emit(); },
+      remove: (id) => { s.promos = s.promos.filter(p => p.id !== id); emit(); },
+    },
+    banners: {
+      subscribe: (cb) => sub(x => x.banners, cb),
+      add: (b) => { const row = { active: true, ...b, id: b.id || randId() }; s.banners.push(row); emit(); return row; },
+      update: (id, patch) => { const b = s.banners.find(x => x.id === id); if (b) Object.assign(b, patch); emit(); },
+      remove: (id) => { s.banners = s.banners.filter(b => b.id !== id); emit(); },
     },
     vehicles: {
       subscribe: (u, cb) => sub(x => x.vehicles[u] || [], cb),
@@ -96,27 +134,73 @@ async function firebaseBackend() {
   ]);
   const app = getApps()[0] || initializeApp(firebaseConfig);   // hindari duplicate-app
   const db = fs.getFirestore(app);
+  // sambungkan ke emulator sekali saja (aman dipanggil sebelum operasi pertama)
+  if (USE_EMULATOR && !window.__qpFsEmu) {
+    window.__qpFsEmu = true;
+    fs.connectFirestoreEmulator(db, EMULATOR.host, EMULATOR.firestorePort);
+  }
   const { collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
     onSnapshot, query, where, orderBy, runTransaction, serverTimestamp } = fs;
 
   const colArr = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+  // onSnapshot TANPA handler error akan diam saja saat rules menolak baca —
+  // UI lalu menampilkan area kosong tanpa penjelasan (bukan "belum ada data",
+  // benar-benar tidak ada yang tergambar). Bungkus supaya kegagalan tercatat
+  // di console DAN halaman tetap menggambar keadaan kosongnya.
+  // Semua pemakai watch() adalah langganan KOLEKSI, jadi bentuk kosongnya
+  // selalu array — jangan kirim null, pemanggil langsung mem-filter/map hasilnya.
+  const watch = (ref, cb, map = colArr, label = "") => onSnapshot(ref, s => cb(map(s)), (e) => {
+    console.warn("Langganan" + (label ? " " + label : "") + " gagal:", e.code || e.message);
+    cb([]);
+  });
+
   return {
     mode: "firebase", _db: db,
-    // seed lokasi bila kosong — dipanggil SETELAH user login (non-fatal)
+    // Seed lokasi & promo bila koleksi masih kosong — dipanggil SETELAH user login dan
+    // TIDAK boleh menggagalkan app: rules hanya mengizinkan penulis ber-role
+    // admin, jadi bagi pelanggan biasa langkah ini memang akan ditolak.
+    // Kegagalan tetap dicatat ke console supaya bisa didiagnosis (jangan
+    // dibungkam total — dulu masalah seeding jadi tak terlihat sama sekali).
     async ensureSeed() {
       try {
         const snap = await getDocs(collection(db, "locations"));
-        if (snap.empty) for (const l of SEED_LOCATIONS) { try { await setDoc(doc(db, "locations", l.id), l); } catch {} }
-      } catch {}
+        if (snap.empty) for (const l of SEED_LOCATIONS) {
+          const { id, ...d } = l;
+          try { await setDoc(doc(db, "locations", id), d); }
+          catch (e) { console.warn("Seed lokasi", id, "gagal:", e.code || e.message); break; }
+        }
+      } catch (e) { console.warn("Cek seed lokasi gagal:", e.code || e.message); }
+      try {
+        const snap = await getDocs(collection(db, "promos"));
+        if (snap.empty) for (const p of DEFAULT_PROMOS) {
+          const { id, ...d } = p;
+          try { await setDoc(doc(db, "promos", id), d); }
+          catch (e) { console.warn("Seed promo", id, "gagal:", e.code || e.message); break; }
+        }
+      } catch (e) { console.warn("Cek seed promo gagal:", e.code || e.message); }
     },
     locations: {
-      subscribe: (cb) => onSnapshot(collection(db, "locations"), s => cb(colArr(s))),
+      subscribe: (cb) => watch(collection(db, "locations"), cb, colArr, "locations"),
       get: async (id) => (await getDoc(doc(db, "locations", id))).data(),
       update: (id, patch) => updateDoc(doc(db, "locations", id), patch),
+      add: async (loc) => { const ref = await addDoc(collection(db, "locations"), { occMotor: 0, occCar: 0, ...loc }); return { id: ref.id, ...loc }; },
+      remove: (id) => deleteDoc(doc(db, "locations", id)),
       // seeding produksi: hanya lolos rules bila pemanggil ber-role admin
       seed: async () => { for (const l of SEED_LOCATIONS) { const { id, ...d } = l;
         await setDoc(doc(db, "locations", id), { ...d, occMotor: 0, occCar: 0 }); } },
+    },
+    promos: {
+      subscribe: (cb) => watch(collection(db, "promos"), cb, colArr, "promos"),
+      add: (p) => addDoc(collection(db, "promos"), p),
+      update: (id, patch) => updateDoc(doc(db, "promos", id), patch),
+      remove: (id) => deleteDoc(doc(db, "promos", id)),
+    },
+    banners: {
+      subscribe: (cb) => watch(collection(db, "banners"), cb, colArr, "banners"),
+      add: (b) => addDoc(collection(db, "banners"), { active: true, ...b }),
+      update: (id, patch) => updateDoc(doc(db, "banners", id), patch),
+      remove: (id) => deleteDoc(doc(db, "banners", id)),
     },
     vehicles: {
       subscribe: (u, cb) => onSnapshot(collection(db, "users", u, "vehicles"), s => cb(colArr(s))),
@@ -131,8 +215,8 @@ async function firebaseBackend() {
         s => cb(colArr(s).sort((a, b) => b.checkinAt - a.checkinAt))),
       listFor: async (u) => colArr(await getDocs(query(collection(db, "sessions"), where("uid", "==", u)))).sort((a, b) => b.checkinAt - a.checkinAt),
     },
-    transactions: { subscribe: (cb) => onSnapshot(collection(db, "transactions"), s => cb(colArr(s).sort((a, b) => b.paidAt - a.paidAt))) },
-    officers: { subscribe: (cb) => onSnapshot(collection(db, "officers"), s => cb(colArr(s))) },
+    transactions: { subscribe: (cb) => watch(collection(db, "transactions"), cb, s => colArr(s).sort((a, b) => b.paidAt - a.paidAt), "transactions") },
+    officers: { subscribe: (cb) => watch(collection(db, "officers"), cb, colArr, "officers") },
     profile: { get: async (u) => (await getDoc(doc(db, "users", u))).data() || null, set: (u, p) => setDoc(doc(db, "users", u), p, { merge: true }) },
     wallet: { get: async (u) => (await getDoc(doc(db, "users", u))).data()?.wallet ?? 25000, set: (u, v) => setDoc(doc(db, "users", u), { wallet: v }, { merge: true }) },
 
@@ -147,6 +231,7 @@ async function firebaseBackend() {
           throw new Error("Anti double-parking: Anda masih punya sesi parkir aktif.");
         const locRef = doc(db, "locations", locationId);
         const loc = (await tx.get(locRef)).data();
+        if (!loc) throw new Error("Lokasi parkir tidak ditemukan.");
         const key = vehicle.type === "mobil" ? "occCar" : "occMotor";
         const cap = vehicle.type === "mobil" ? "capCar" : "capMotor";
         if ((loc[key] || 0) >= loc[cap]) throw new Error("Slot penuh di lokasi ini.");
@@ -170,7 +255,8 @@ async function firebaseBackend() {
         const amount = hitungTarif(z.vehicle.type, checkoutAt - z.checkinAt);
         const key = z.vehicle.type === "mobil" ? "occCar" : "occMotor";
         tx.update(ref, { checkoutAt, status: "done", amount, method });
-        tx.update(locRef, { [key]: Math.max(0, (loc[key] || 0) - 1) });
+        // lokasi bisa saja sudah dihapus admin — checkout tetap harus bisa selesai
+        if (loc) tx.update(locRef, { [key]: Math.max(0, (loc[key] || 0) - 1) });
         tx.set(doc(db, "users", z.uid), { activeSession: null }, { merge: true });
         // catat transaksi di TRANSAKSI YANG SAMA — checkout & log pendapatan atomik
         tx.set(doc(collection(db, "transactions")), { sessionId: id, uid: z.uid,

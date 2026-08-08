@@ -1,0 +1,599 @@
+// ============================================================
+// Panel Admin (admin.html) — CMS ringan untuk lokasi parkir, promo,
+// banner beranda, dan ekspor QR. Halaman BERDIRI SENDIRI di luar SPA
+// #/admin (yang memakai role Firebase); di sini gerbang masuknya
+// username/password statis sesuai permintaan.
+// ============================================================
+import { h, $, rupiah, toast, modal } from "./util.js";
+import { authShell, field, setError, clearError, busy, markAuthView } from "./parts.js";
+import { initData, DB, MODE } from "./data.js";
+import { initAuth, Auth } from "./auth.js";
+import { renderQR } from "./qr.js";
+
+// ⚠️ CATATAN KEAMANAN — WAJIB DIBACA SEBELUM DIPAKAI DI PRODUKSI:
+// Username & password di bawah ini tersimpan sebagai teks polos di berkas JS
+// yang dikirim ke browser siapa pun yang membuka admin.html — SIAPA SAJA bisa
+// membacanya lewat "View Source"/DevTools. Gerbang ini hanya mencegah akses
+// tak sengaja, BUKAN perlindungan sungguhan.
+//
+// Pengaman yang SEBENARNYA saat mode Firebase aktif adalah Firestore Rules:
+// menulis locations/promos/banners menuntut akun Firebase Auth ber-role
+// "admin". Karena itu halaman ini WAJIB memanggil initAuth() — tanpa itu
+// Firestore berjalan tanpa token sama sekali dan SEMUA penulisan ditolak
+// (bahkan membaca `transactions` gagal, sehingga pendapatan selalu Rp 0).
+// Lolos gerbang sandi di bawah TIDAK memberi hak tulis apa pun dengan
+// sendirinya. Untuk keamanan sungguhan, ganti gerbang ini dengan Firebase
+// Auth + custom claim/role, idealnya lewat Cloud Functions.
+const ADMIN_USER = "admin";
+const ADMIN_PASS = "admin234156";
+const SESSION_KEY = "qp_admin_session_v1";
+
+// sessionStorage (bukan localStorage): sesi admin berakhir saat tab ditutup,
+// mengurangi risiko tertinggal login di komputer bersama.
+const isLoggedIn = () => { try { return sessionStorage.getItem(SESSION_KEY) === "1"; } catch { return false; } };
+const setLoggedIn = (v) => { try { v ? sessionStorage.setItem(SESSION_KEY, "1") : sessionStorage.removeItem(SESSION_KEY); } catch {} };
+
+// Placeholder sebelum snapshot pertama tiba. Tanpa ini area daftar tampak
+// kosong melompong saat Firestore masih memuat — tak terbedakan dari
+// "memang belum ada data".
+const memuat = (teks = "Memuat data…") =>
+  h(".empty.adm-loading", {}, [h(".ic", { text: "⏳" }), h("p", { text: teks })]);
+
+// Baris daftar admin: isi di kiri, tombol aksi di kanan. Di layar sempit
+// blok aksi turun jadi baris sendiri selebar kartu (lihat .adm-item di
+// admin.css) supaya tombol tetap cukup besar untuk disentuh.
+const admItem = (icon, body, actions = [], badge = null) =>
+  h(".adm-item", {}, [
+    h(".adm-main", {}, [h(".ic", { text: icon }), h(".adm-body", {}, body)]),
+    h(".adm-act", {}, [badge, ...actions]),
+  ]);
+
+// ---------- konfirmasi hapus (pakai modal() bawaan + hook _close-nya) ----------
+function confirmDialog(title, msg, { okText = "Hapus", danger = true } = {}) {
+  return modal(title, h("div", {}, [
+    h("p.s", { text: msg }),
+    h("div", { style: "display:flex;gap:10px;margin-top:14px" }, [
+      h("button.btn.ghost", { type: "button", style: "flex:1", onclick: (e) => e.target.closest(".modal")._close(false) }, "Batal"),
+      h("button.btn" + (danger ? ".danger" : ""), { type: "button", style: "flex:1", onclick: (e) => e.target.closest(".modal")._close(true) }, okText),
+    ]),
+  ]));
+}
+
+// ============================================================
+// Gerbang login
+// ============================================================
+// dilepas lagi oleh boot(); tanpa ini kartu login tidak meregang setinggi layar
+let unmarkAuth = null;
+
+function renderLogin(root) {
+  $("#app").classList.remove("wide");
+  root.innerHTML = "";
+  unmarkAuth = markAuthView();
+
+  const user = h("input.input", { type: "text", placeholder: "admin", autocomplete: "username", autocapitalize: "off", autocorrect: "off" });
+  const pass = h("input.input", { type: "password", placeholder: "Kata sandi", autocomplete: "current-password" });
+  const btn = h("button.btn", { type: "submit" }, "Masuk");
+
+  function submit() {
+    const u = user.value.trim(), p = pass.value;
+    if (!u) return setError(user, "Username wajib diisi");
+    if (!p) return setError(pass, "Kata sandi wajib diisi");
+    clearError(user); clearError(pass);
+    busy(btn, true, "Memeriksa…");
+    // Jeda kosmetik saja (terasa "memproses") — bukan pengaman. Lihat catatan
+    // keamanan di atas berkas ini.
+    setTimeout(() => {
+      if (u === ADMIN_USER && p === ADMIN_PASS) { setLoggedIn(true); toast("Berhasil masuk", "ok"); boot(root); }
+      else { busy(btn, false, "Masuk"); setError(pass, "Username atau kata sandi salah"); }
+    }, 250);
+  }
+
+  root.append(authShell({
+    brand: { tag: "Panel Admin" },
+    badge: "🔒 Area terbatas",
+    title: "Masuk Panel Admin",
+    sub: "Kelola lokasi parkir, promo, banner beranda, dan QR check-in.",
+    onsubmit: submit,
+    card: [field("Username", user), field("Kata sandi", pass, { toggle: true }), btn],
+    // tautan pelanggan ("Tentang", "Bantuan") tidak relevan di gerbang internal;
+    // yang dibutuhkan justru jalan keluar bagi yang salah membuka halaman ini
+    links: [{ href: "app.html", text: "‹ Buka aplikasi QuParkir" }],
+    note: h(".auth-notice", {}, [
+      h("span.ic", { text: "🔒" }),
+      h("p", { text: "Halaman internal tim QuParkir. Hubungi admin sistem bila lupa kredensial." }),
+    ]),
+  }));
+  user.focus();
+}
+
+function logout() { setLoggedIn(false); location.reload(); }
+
+// ============================================================
+// Status hak tulis (mode Firebase)
+// ============================================================
+// Gerbang sandi hanya membuka tampilan; yang menentukan boleh-tidaknya menulis
+// adalah role akun Firebase. Tanpa penanda ini, admin menekan Simpan lalu
+// hanya mendapat toast "permission-denied" tanpa tahu sebabnya.
+function statusStrip() {
+  const el = h(".adm-status");
+  const paint = () => {
+    const u = Auth?.current?.() || null;
+    el.innerHTML = "";
+    el.className = "adm-status";
+    if (MODE !== "firebase") {
+      el.classList.add("demo");
+      el.append(h("span.ic", { text: "🧪" }), h("p", {}, [
+        h("b", { text: "Mode DEMO — " }),
+        document.createTextNode("perubahan hanya tersimpan di browser ini (localStorage), tidak ke server."),
+      ]));
+      return;
+    }
+    if (u?.role === "admin") {
+      el.classList.add("ok");
+      el.append(h("span.ic", { text: "✅" }), h("p", {}, [
+        document.createTextNode("Terhubung Firebase sebagai "),
+        h("b", { text: u.email || u.name || u.uid }),
+        document.createTextNode(" (admin) — perubahan tersimpan ke server."),
+      ]));
+      return;
+    }
+    el.classList.add("warn");
+    el.append(h("span.ic", { text: "⚠️" }), h("div", {}, [
+      h("p", {}, [
+        h("b", { text: u ? "Akun Firebase ini bukan admin. " : "Belum masuk ke akun Firebase. " }),
+        document.createTextNode("Menyimpan/menghapus data akan ditolak server, dan rekap transaksi tidak bisa dibaca."),
+      ]),
+      h("a.btn.sm.ghost", { href: "app.html#/login", target: "_blank", rel: "noopener" }, "Masuk akun admin →"),
+    ]));
+  };
+  paint();
+  const unsub = Auth?.onChange?.(paint);
+  el._unsub = () => unsub && unsub();
+  return el;
+}
+
+// ============================================================
+// Dashboard: topbar + tab + konten
+// ============================================================
+const TABS = [
+  { id: "ringkasan", label: "📊 Ringkasan", render: renderRingkasan },
+  { id: "lokasi", label: "🅿️ Lokasi", render: renderLokasi },
+  { id: "promo", label: "🎁 Promo", render: renderPromo },
+  { id: "banner", label: "📣 Banner", render: renderBanner },
+  { id: "qris", label: "🧾 Export QRIS", render: renderQris },
+];
+
+function boot(root) {
+  if (unmarkAuth) { unmarkAuth(); unmarkAuth = null; }
+  $("#app").classList.add("wide");
+  root.innerHTML = "";
+
+  // .adm-shell membatasi lebar baca di monitor besar & memberi padding konsisten
+  const content = h("div.adm-shell");
+  const tabbar = h("nav.admin-tabs");
+  let active = TABS[0].id, cleanup = null;
+
+  function paintTabs() {
+    tabbar.innerHTML = "";
+    let activeBtn = null;
+    TABS.forEach(t => {
+      const btn = h("button" + (t.id === active ? ".active" : ""), {
+        type: "button",
+        "aria-current": t.id === active ? "page" : false,
+        onclick: () => { if (t.id === active) return; active = t.id; paintTabs(); paintContent(); },
+      }, t.label);
+      if (t.id === active) activeBtn = btn;
+      tabbar.append(btn);
+    });
+    // Di ponsel strip tab lebih lebar dari layar; tanpa ini tab yang sedang
+    // aktif bisa berada di luar layar dan terasa seperti tak ada yang terpilih.
+    activeBtn?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+  function paintContent() {
+    if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
+    content.innerHTML = "";
+    cleanup = TABS.find(t => t.id === active).render(content);
+  }
+
+  root.append(
+    // topbar + tab satu blok sticky: tingginya tak perlu ditebak lewat offset
+    h(".admin-head", {}, [
+      h(".admin-topbar", {}, [
+        h(".adm-shell.adm-bar", {}, [
+          h(".brandbox", {}, [h("b", { text: "🅿️ Panel Admin" }), h("small", { text: "QuParkir · Surakarta" })]),
+          h("button.btn.sm.ghost", { type: "button", onclick: logout }, "Keluar"),
+        ]),
+      ]),
+      h(".admin-tabwrap", {}, [tabbar]),
+    ]),
+    h(".adm-shell.adm-statuswrap", {}, [statusStrip()]),
+    content,
+  );
+  paintTabs(); paintContent();
+}
+
+// ---------- Tab: Ringkasan ----------
+function renderRingkasan(root) {
+  const statEl = h(".stats.stats-4");
+  const locList = h("div", {}, [memuat()]);
+  const txList = h("div", {}, [memuat()]);
+  root.append(
+    h("section.section", {}, [h(".head", {}, [h("h2", { text: "Ringkasan" })]), statEl]),
+    // dua kolom berdampingan di desktop, bertumpuk di mobile
+    h(".adm-cols", {}, [
+      h("section.section", {}, [h(".head", {}, [h("h2", { text: "Kantong Parkir" })]), locList]),
+      h("section.section", {}, [h(".head", {}, [h("h2", { text: "Transaksi Terbaru" })]), txList]),
+    ]),
+  );
+
+  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
+  let locs = [], txs = [];
+
+  function paint() {
+    const incomeToday = txs.filter(t => t.paidAt >= startToday.getTime()).reduce((a, b) => a + (b.amount || 0), 0);
+    const totalCap = locs.reduce((a, l) => a + (l.capMotor || 0) + (l.capCar || 0), 0);
+    const totalOcc = locs.reduce((a, l) => a + (l.occMotor || 0) + (l.occCar || 0), 0);
+    const occPct = totalCap ? Math.round((totalOcc / totalCap) * 100) : 0;
+
+    statEl.innerHTML = "";
+    [["Pendapatan hari ini", rupiah(incomeToday)], ["Kendaraan aktif", String(totalOcc)],
+     ["Keterisian", occPct + "%"], ["Lokasi terdaftar", String(locs.length)]]
+      .forEach(([l, n]) => statEl.append(h(".stat", {}, [h(".num", { style: "font-size:1.1rem", text: n }), h(".lbl", { text: l })])));
+
+    locList.innerHTML = "";
+    if (!locs.length) locList.append(h(".empty", {}, [h(".ic", { text: "🅿️" }), h("p", { text: "Belum ada kantong parkir." })]));
+    locs.forEach(l => {
+      const cap = (l.capMotor || 0) + (l.capCar || 0), occ = (l.occMotor || 0) + (l.occCar || 0);
+      const pct = cap ? Math.round((occ / cap) * 100) : 0;
+      locList.append(h(".li", {}, [
+        h(".ic", { text: "🅿️" }),
+        h("div", { style: "flex:1" }, [
+          h(".t", { text: l.name }),
+          h(".s", { text: "Terisi " + occ + " / " + cap + " (" + pct + "%)" }),
+          h(".bar", {}, [h("i" + (pct >= 95 ? ".full" : ""), { style: "width:" + pct + "%" })]),
+        ]),
+      ]));
+    });
+
+    txList.innerHTML = "";
+    if (!txs.length) txList.append(h(".empty", {}, [h(".ic", { text: "🧾" }), h("p", { text: "Belum ada transaksi." })]));
+    txs.slice(0, 10).forEach(t => {
+      const loc = locs.find(l => l.id === t.locationId);
+      txList.append(h(".li", {}, [
+        h(".ic", { text: "💳" }),
+        h("div", { style: "flex:1" }, [h(".t", { text: rupiah(t.amount) }), h(".s", { text: (loc?.name || t.locationId) + " · " + String(t.method || "-").toUpperCase() })]),
+        h(".end", {}, [h(".s", { text: new Date(t.paidAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) })]),
+      ]));
+    });
+  }
+
+  const u1 = DB.locations.subscribe(x => { locs = x; paint(); });
+  const u2 = DB.transactions.subscribe(x => { txs = x; paint(); });
+  return () => { u1 && u1(); u2 && u2(); };
+}
+
+// ---------- Tab: Lokasi (CRUD penuh) ----------
+function lokasiForm(existing) {
+  const nama = h("input.input", { type: "text", value: existing?.name || "", placeholder: "mis. Solo Grand Mall" });
+  const alamat = h("input.input", { type: "text", value: existing?.address || "", placeholder: "Jl. Slamet Riyadi No.273, Surakarta" });
+  const lat = h("input.input", { type: "number", step: "0.00001", value: existing?.lat ?? "", placeholder: "-7.56628" });
+  const lng = h("input.input", { type: "number", step: "0.00001", value: existing?.lng ?? "", placeholder: "110.80754" });
+  const capMotor = h("input.input", { type: "number", min: 0, value: existing?.capMotor ?? 50 });
+  const capCar = h("input.input", { type: "number", min: 0, value: existing?.capCar ?? 30 });
+  const tarifMotor = h("input.input", { type: "number", min: 0, step: 500, value: existing?.tarif?.motor ?? 2000 });
+  const tarifMobil = h("input.input", { type: "number", min: 0, step: 500, value: existing?.tarif?.mobil ?? 3000 });
+
+  const cariBtn = h("button.btn.sm.ghost", {
+    type: "button",
+    onclick: () => {
+      const q = (alamat.value || nama.value).trim();
+      if (!q) return toast("Isi nama/alamat dulu", "err");
+      window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q), "_blank", "noopener");
+    },
+  }, "🔍 Cari di Google Maps");
+
+  const simpanBtn = h("button.btn", { type: "button" }, existing ? "Simpan Perubahan" : "Tambah Lokasi");
+
+  simpanBtn.addEventListener("click", async () => {
+    const vals = {
+      name: nama.value.trim(),
+      address: alamat.value.trim(),
+      lat: Number(lat.value), lng: Number(lng.value),
+      capMotor: Number(capMotor.value), capCar: Number(capCar.value),
+      tarif: { motor: Number(tarifMotor.value), mobil: Number(tarifMobil.value) },
+    };
+    if (!vals.name) return setError(nama, "Nama wajib diisi");
+    if (!Number.isFinite(vals.lat) || vals.lat < -90 || vals.lat > 90) return setError(lat, "Latitude tidak valid (-90…90)");
+    if (!Number.isFinite(vals.lng) || vals.lng < -180 || vals.lng > 180) return setError(lng, "Longitude tidak valid (-180…180)");
+    if (!Number.isInteger(vals.capMotor) || vals.capMotor < 0) return setError(capMotor, "Wajib bilangan bulat ≥ 0");
+    if (!Number.isInteger(vals.capCar) || vals.capCar < 0) return setError(capCar, "Wajib bilangan bulat ≥ 0");
+    if (!Number.isFinite(vals.tarif.motor) || vals.tarif.motor < 0) return setError(tarifMotor, "Tarif tidak valid");
+    if (!Number.isFinite(vals.tarif.mobil) || vals.tarif.mobil < 0) return setError(tarifMobil, "Tarif tidak valid");
+    if (existing && (vals.capMotor < (existing.occMotor || 0) || vals.capCar < (existing.occCar || 0)))
+      return toast("Kapasitas tidak boleh di bawah keterisian saat ini", "err");
+
+    busy(simpanBtn, true, "Menyimpan…");
+    try {
+      if (existing) await DB.locations.update(existing.id, vals);
+      else await DB.locations.add(vals);
+      $("#modalHost").innerHTML = "";
+      toast(existing ? "Lokasi diperbarui" : "Lokasi ditambahkan", "ok");
+    } catch (e) {
+      busy(simpanBtn, false, existing ? "Simpan Perubahan" : "Tambah Lokasi");
+      toast("Gagal: " + e.message, "err");
+    }
+  });
+
+  return h("div.admin-form", {}, [
+    field("Nama lokasi", nama),
+    field("Alamat", alamat),
+    h(".row2", {}, [field("Latitude", lat), field("Longitude", lng)]),
+    h(".adm-hint", {}, [
+      cariBtn,
+      h("p", { text: "Tip: cari lokasinya, klik-kanan titik yang tepat di Google Maps, lalu salin koordinat yang muncul." }),
+    ]),
+    h(".row2", {}, [field("Slot Motor", capMotor), field("Slot Mobil", capCar)]),
+    h(".row2", {}, [field("Tarif Motor/jam (Rp)", tarifMotor), field("Tarif Mobil/jam (Rp)", tarifMobil)]),
+    simpanBtn,
+  ]);
+}
+
+function renderLokasi(root) {
+  const listEl = h("div", {}, [memuat()]);
+  root.append(h("section.section", {}, [
+    h(".head", {}, [h("h2", { text: "Lokasi Parkir" }), h("a", { onclick: () => modal("Tambah Lokasi", lokasiForm(null)) }, "+ Tambah")]),
+    h("p.s", { style: "margin-bottom:10px", text: "Muncul otomatis di menu Cari Parkir & peta pelanggan begitu disimpan." }),
+    listEl,
+  ]));
+
+  const unsub = DB.locations.subscribe((locs) => {
+    listEl.innerHTML = "";
+    if (!locs.length) {
+      // Bootstrap koleksi kosong — satu-satunya kemampuan dashboard #/admin
+      // lama yang belum ada di sini. Menulis 6 lokasi awal Surakarta; lolos
+      // rules hanya bila pemanggil ber-role admin (lihat strip status).
+      const seedBtn = h("button.btn", { style: "margin-top:12px", onclick: async () => {
+        busy(seedBtn, true, "Memuat…");
+        try { await DB.locations.seed(); toast("6 lokasi awal dimuat", "ok"); }
+        catch (e) { busy(seedBtn, false, "🌱 Muat 6 lokasi awal (Surakarta)"); toast("Gagal memuat: " + e.message, "err"); }
+      } }, "🌱 Muat 6 lokasi awal (Surakarta)");
+      listEl.append(h(".empty", {}, [
+        h(".ic", { text: "🅿️" }),
+        h("p", { text: "Belum ada lokasi. Tambahkan lokasi pertama." }),
+        seedBtn,
+      ]));
+      return;
+    }
+    locs.forEach(l => {
+      const cap = (l.capMotor || 0) + (l.capCar || 0), occ = (l.occMotor || 0) + (l.occCar || 0);
+      const pct = cap ? Math.round((occ / cap) * 100) : 0;
+      listEl.append(admItem("🅿️", [
+        h(".t", { text: l.name }),
+        h(".s", { text: (l.address ? l.address + " · " : "") + "Terisi " + occ + "/" + cap + " (" + pct + "%)" }),
+        h(".bar", {}, [h("i" + (pct >= 95 ? ".full" : ""), { style: "width:" + pct + "%" })]),
+      ], [
+        h("button.btn.sm.ghost", { onclick: () => modal("Edit — " + l.name, lokasiForm(l)) }, "Edit"),
+        h("button.btn.sm.danger", {
+          onclick: async () => {
+            if (!(await confirmDialog("Hapus lokasi?", `"${l.name}" akan dihapus permanen dari daftar Cari Parkir. Riwayat sesi/transaksi lama tidak ikut terhapus.`))) return;
+            try { await DB.locations.remove(l.id); toast("Lokasi dihapus", "ok"); }
+            catch (e) { toast("Gagal: " + e.message, "err"); }
+          },
+        }, "Hapus"),
+      ]));
+    });
+  });
+  return () => unsub && unsub();
+}
+
+// ---------- Tab: Promo (CRUD, UI kartu dibuat otomatis dari teks) ----------
+function promoForm(existing) {
+  const tag = h("input.input", { type: "text", value: existing?.tag || "", placeholder: "BARU / HEMAT / POIN" });
+  const title = h("input.input", { type: "text", value: existing?.title || "", placeholder: "Cashback 50%" });
+  const desc = h("textarea.input", { rows: 3, text: existing?.desc || "", placeholder: "Semua transaksi parkir pakai QuPay · 27 Feb – 31 Agu 2026" });
+  const simpanBtn = h("button.btn", { type: "button" }, existing ? "Simpan Perubahan" : "Tambah Promo");
+
+  simpanBtn.addEventListener("click", async () => {
+    const t = title.value.trim(), d = desc.value.trim();
+    if (!t) return setError(title, "Judul wajib diisi");
+    if (!d) return setError(desc, "Deskripsi wajib diisi");
+    busy(simpanBtn, true, "Menyimpan…");
+    try {
+      const vals = { tag: tag.value.trim(), title: t, desc: d };
+      if (existing) await DB.promos.update(existing.id, vals);
+      else await DB.promos.add(vals);
+      $("#modalHost").innerHTML = "";
+      toast(existing ? "Promo diperbarui" : "Promo ditambahkan", "ok");
+    } catch (e) {
+      busy(simpanBtn, false, existing ? "Simpan Perubahan" : "Tambah Promo");
+      toast("Gagal: " + e.message, "err");
+    }
+  });
+
+  return h("div.admin-form", {}, [
+    field("Label badge (opsional)", tag, { hint: "Teks kecil di pojok kartu, mis. BARU" }),
+    field("Judul", title),
+    field("Deskripsi", desc),
+    simpanBtn,
+  ]);
+}
+
+function renderPromo(root) {
+  const listEl = h("div", {}, [memuat()]);
+  root.append(h("section.section", {}, [
+    h(".head", {}, [h("h2", { text: "Promo Beranda" }), h("a", { onclick: () => modal("Tambah Promo", promoForm(null)) }, "+ Tambah")]),
+    h("p.s", { style: "margin-bottom:10px", text: "Tampil sebagai carousel & modal Promo di beranda pelanggan — isi teksnya saja, kartunya dibuat otomatis." }),
+    listEl,
+  ]));
+
+  const unsub = DB.promos.subscribe((list) => {
+    listEl.innerHTML = "";
+    if (!list.length) { listEl.append(h(".empty", {}, [h(".ic", { text: "🎁" }), h("p", { text: "Belum ada promo." })])); return; }
+    list.forEach(p => listEl.append(admItem("🎁",
+      [h(".t", { text: p.title }), h(".s", { text: p.desc })],
+      [
+        h("button.btn.sm.ghost", { onclick: () => modal("Edit Promo", promoForm(p)) }, "Edit"),
+        h("button.btn.sm.danger", {
+          onclick: async () => {
+            if (!(await confirmDialog("Hapus promo?", `Promo "${p.title}" akan dihapus dari beranda.`))) return;
+            try { await DB.promos.remove(p.id); toast("Promo dihapus", "ok"); }
+            catch (e) { toast("Gagal: " + e.message, "err"); }
+          },
+        }, "Hapus"),
+      ],
+      p.tag ? h("span.pill.info", { text: p.tag }) : null,
+    )));
+  });
+  return () => unsub && unsub();
+}
+
+// ---------- Tab: Banner (CRUD, teks polos) ----------
+function bannerForm(existing) {
+  const text = h("input.input", { type: "text", value: existing?.text || "", placeholder: "mis. Pemeliharaan sistem 10 Agu 2026, 00.00–02.00" });
+  const sub = h("input.input", { type: "text", value: existing?.subtext || "", placeholder: "Keterangan tambahan (opsional)" });
+  const active = h("input", { type: "checkbox", checked: existing ? existing.active !== false : true });
+  const simpanBtn = h("button.btn", { type: "button" }, existing ? "Simpan Perubahan" : "Tambah Banner");
+
+  simpanBtn.addEventListener("click", async () => {
+    const t = text.value.trim();
+    if (!t) return setError(text, "Teks wajib diisi");
+    busy(simpanBtn, true, "Menyimpan…");
+    try {
+      const vals = { text: t, subtext: sub.value.trim(), active: active.checked };
+      if (existing) await DB.banners.update(existing.id, vals);
+      else await DB.banners.add(vals);
+      $("#modalHost").innerHTML = "";
+      toast(existing ? "Banner diperbarui" : "Banner ditambahkan", "ok");
+    } catch (e) {
+      busy(simpanBtn, false, existing ? "Simpan Perubahan" : "Tambah Banner");
+      toast("Gagal: " + e.message, "err");
+    }
+  });
+
+  return h("div.admin-form", {}, [
+    field("Teks utama", text),
+    field("Sub-teks (opsional)", sub),
+    h("label.chk", {}, [active, h("span", { text: "Tampilkan di beranda" })]),
+    simpanBtn,
+  ]);
+}
+
+function renderBanner(root) {
+  const listEl = h("div", {}, [memuat()]);
+  root.append(h("section.section", {}, [
+    h(".head", {}, [h("h2", { text: "Banner Beranda" }), h("a", { onclick: () => modal("Tambah Banner", bannerForm(null)) }, "+ Tambah")]),
+    h("p.s", { style: "margin-bottom:10px", text: "Pengumuman di puncak beranda pelanggan. Nonaktifkan sementara lewat sakelar tanpa perlu menghapus." }),
+    listEl,
+  ]));
+
+  const unsub = DB.banners.subscribe((list) => {
+    listEl.innerHTML = "";
+    if (!list.length) { listEl.append(h(".empty", {}, [h(".ic", { text: "📣" }), h("p", { text: "Belum ada banner." })])); return; }
+    list.forEach(b => {
+      const aktif = b.active !== false;
+      listEl.append(admItem("📣",
+        [h(".t", { text: b.text }), h(".s", { text: b.subtext || (aktif ? "Tampil di beranda" : "Disembunyikan") })],
+        [
+          h("button.btn.sm.ghost", { onclick: () => modal("Edit Banner", bannerForm(b)) }, "Edit"),
+          h("button.btn.sm.danger", {
+            onclick: async () => {
+              if (!(await confirmDialog("Hapus banner?", "Banner ini akan dihapus."))) return;
+              try { await DB.banners.remove(b.id); toast("Banner dihapus", "ok"); }
+              catch (e) { toast("Gagal: " + e.message, "err"); }
+            },
+          }, "Hapus"),
+        ],
+        h("span.pill" + (aktif ? ".ok" : ".warn"), { text: aktif ? "Aktif" : "Nonaktif" }),
+      ));
+    });
+  });
+  return () => unsub && unsub();
+}
+
+// ---------- Tab: Export QRIS ----------
+// Unduh PNG dari elemen hasil renderQR(): qrcodejs (jalur normal) menggambar
+// <canvas> yang bisa langsung diekspor via toDataURL; jalur fallback (qr.js,
+// saat CDN gagal dimuat) memasang <img> ber-src qrserver.com yang diambil
+// sebagai blob supaya tetap terunduh sebagai berkas, bukan sekadar terbuka.
+async function unduhQR(el, filename) {
+  const canvas = el.querySelector("canvas");
+  if (canvas) {
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = filename;
+    a.click();
+    return;
+  }
+  const img = el.querySelector("img");
+  if (!img) return toast("QR belum siap, coba lagi", "err");
+  try {
+    const blob = await (await fetch(img.src)).blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    // offline/CORS ke qrserver bisa gagal — buka tab agar tetap bisa disimpan manual
+    window.open(img.src, "_blank", "noopener");
+  }
+}
+
+function renderQris(root) {
+  const locWrap = h(".qr-grid", {}, [memuat("Memuat lokasi…")]);
+  const custom = h("div");
+  root.append(
+    h("section.section", {}, [
+      h(".head", {}, [h("h2", { text: "QR Check-in per Lokasi" })]),
+      h("p.s", { style: "margin-bottom:10px", text: "Kode ini yang dipindai pelanggan lewat menu Scan QR di aplikasi — cetak & pasang di gerbang masuk lokasi." }),
+      locWrap,
+    ]),
+    h("section.section", {}, [
+      h(".head", {}, [h("h2", { text: "QR Kustom / QRIS Statis" })]),
+      h("p.s", { style: "margin-bottom:10px", text: "Tempel string QRIS merchant (atau teks/tautan lain) untuk dijadikan QR yang bisa diunduh." }),
+      custom,
+    ]),
+  );
+
+  const unsub = DB.locations.subscribe((locs) => {
+    locWrap.innerHTML = "";
+    if (!locs.length) { locWrap.append(h(".empty", {}, [h(".ic", { text: "🅿️" }), h("p", { text: "Belum ada lokasi." })])); return; }
+    locs.forEach(l => {
+      const box = h(".qrbox");
+      renderQR(box, "QP-LOC:" + l.id, 160);
+      locWrap.append(h(".qr-card", {}, [
+        box,
+        h(".t", { text: l.name }),
+        h(".s", { text: "QP-LOC:" + l.id }),
+        h("button.btn.sm.ghost", { onclick: () => unduhQR(box, "qr-" + l.id + ".png") }, "⬇️ Unduh PNG"),
+      ]));
+    });
+  });
+
+  const txt = h("textarea.input", { rows: 3, placeholder: "Tempel string QRIS atau teks lain di sini…" });
+  const prevBox = h(".qrbox", { style: "min-height:196px" });
+  const genBtn = h("button.btn.sm", {
+    onclick: () => { const v = txt.value.trim(); if (!v) return toast("Isi teksnya dulu", "err"); renderQR(prevBox, v, 200); },
+  }, "Buat QR");
+  const dlBtn = h("button.btn.sm.ghost", { onclick: () => unduhQR(prevBox, "qr-kustom.png") }, "⬇️ Unduh PNG");
+  custom.append(txt, h(".adm-btnrow", {}, [genBtn, dlBtn]), prevBox);
+
+  return () => unsub && unsub();
+}
+
+// ============================================================
+// Bootstrap
+// ============================================================
+async function main() {
+  const view = $("#view");
+  // initAuth() HARUS jalan sebelum initData(): Firestore mengambil token dari
+  // instance Auth pada FirebaseApp yang sama. Kalau modul auth tak pernah
+  // diinisialisasi, request Firestore berangkat tanpa token dan semua rules
+  // ber-syarat isSignedIn()/isAdmin() menolaknya.
+  await initAuth();
+  await initData();
+  // tunggu status auth pertama (Firebase memulihkan sesi dari IndexedDB) supaya
+  // spanduk peringatan tidak berkedip "belum masuk" padahal sebenarnya sudah
+  await Promise.race([Auth.ready, new Promise(r => setTimeout(r, 5000))]);
+  DB.ensureSeed && DB.ensureSeed().catch(() => {});
+  if (isLoggedIn()) boot(view); else renderLogin(view);
+}
+main();

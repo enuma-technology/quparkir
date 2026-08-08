@@ -1,0 +1,149 @@
+/* ============================================================
+   QuParkir — Panel Admin (admin.html)
+   Mobile-first. Dibangun di atas tokens.css + app.css (tombol, kartu,
+   modal, form dipakai apa adanya); berkas ini menambah yang khas
+   dashboard: kolom lebar, topbar, tab, baris CRUD, dan grid QR.
+
+   Breakpoint: <640px ponsel · 640–1023px tablet · ≥1024px desktop
+   ============================================================ */
+
+/* ---------- kerangka halaman ----------
+   app.css mengunci .app ke 460px (kartu ponsel). Panel admin butuh
+   selebar layar, jadi .wide melepas batas itu — termasuk radius/margin
+   desktop yang membuatnya tampak seperti ponsel di tengah monitor. */
+.app.wide{max-width:none;width:100%}
+@media (min-width:520px){
+  .app.wide{margin:0;height:auto;min-height:100dvh;border-radius:0;overflow:visible;box-shadow:none}
+}
+/* halaman login tetap memakai kolom ponsel bawaan .app (tanpa .wide) */
+
+/* pembatas lebar baca: konten tidak melar sampai tepi di monitor lebar */
+.adm-shell{width:100%;max-width:1120px;margin-inline:auto;padding:16px}
+
+/* ---------- topbar + tab (satu blok sticky) ----------
+   Digabung supaya tidak perlu menebak tinggi topbar lewat `top:60px` —
+   offset tebakan langsung meleset begitu ukuran font/teks berubah. */
+.admin-head{position:sticky;top:0;z-index:20;box-shadow:0 6px 18px rgba(8,20,70,.18)}
+.admin-topbar{background:var(--header);color:#fff}
+/* NB: kelas .bar sudah dipakai app.css untuk progress bar (height:7px),
+   jadi baris topbar memakai nama tersendiri .adm-bar. */
+.admin-topbar .adm-shell.adm-bar{display:flex;align-items:center;gap:12px;padding:12px 16px}
+.admin-topbar .brandbox{min-width:0}
+.admin-topbar b{display:block;font-size:1rem;font-weight:800;line-height:1.25;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admin-topbar small{display:block;font-size:.72rem;opacity:.85;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admin-topbar .btn.sm.ghost{margin-left:auto;flex:none;background:rgba(255,255,255,.18);color:#fff;box-shadow:none}
+.admin-topbar .btn.sm.ghost:hover{background:rgba(255,255,255,.28);transform:none}
+
+/* ---------- tab ---------- */
+/* di ponsel strip tab bisa digeser mendatar bila tak muat */
+.admin-tabwrap{background:var(--app-bg);border-bottom:1px solid var(--line)}
+.admin-tabs{display:flex;gap:8px;overflow-x:auto;max-width:1120px;margin-inline:auto;
+  padding:10px 16px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.admin-tabs::-webkit-scrollbar{display:none}
+.admin-tabs button{flex:none;cursor:pointer;border:0;border-radius:999px;padding:10px 16px;min-height:44px;
+  font-weight:700;font-size:.85rem;white-space:nowrap;
+  background:var(--tile);color:var(--text-soft);box-shadow:var(--neu-shadow);transition:.16s}
+.admin-tabs button:hover{color:var(--blue-700)}
+.admin-tabs button.active{background:linear-gradient(135deg,var(--blue-600),var(--cyan-500));color:#fff;
+  box-shadow:0 8px 18px rgba(37,99,235,.35)}
+.admin-tabs button:focus-visible{outline:2px solid var(--blue-400);outline-offset:2px}
+
+/* konten tab: .section bawaan sudah punya padding kiri-kanan, jadi
+   di dalam .adm-shell cukup dinolkan agar tidak dobel-indent */
+.adm-shell>.section,.adm-cols>.section{padding-inline:0}
+
+/* ---------- baris daftar CRUD ----------
+   Ponsel : isi di atas, tombol aksi jadi baris penuh di bawah (mudah disentuh).
+   ≥640px : isi dan tombol sebaris, tombol rata kanan. */
+.adm-item{background:var(--card);border-radius:var(--r-md);padding:14px;margin-bottom:10px;
+  box-shadow:0 8px 20px rgba(8,20,70,.1);display:flex;flex-direction:column;gap:12px}
+.adm-main{display:flex;align-items:flex-start;gap:12px;min-width:0}
+.adm-main .ic{width:46px;height:46px;border-radius:13px;background:var(--tile);
+  display:grid;place-items:center;font-size:20px;flex:none}
+.adm-body{flex:1;min-width:0}
+.adm-body .t{font-weight:700;font-size:.94rem;line-height:1.35;overflow-wrap:anywhere}
+.adm-body .s{font-size:.85rem;color:var(--text-soft);line-height:1.45;margin-top:2px;overflow-wrap:anywhere}
+.adm-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.adm-act .btn{flex:1 1 auto}          /* di ponsel tombol berbagi lebar merata */
+.adm-act .pill{flex:none}
+
+@media (min-width:640px){
+  .adm-item{flex-direction:row;align-items:center;gap:14px}
+  .adm-main{flex:1;align-items:center}
+  .adm-act{flex:none;justify-content:flex-end}
+  .adm-act .btn{flex:none}
+}
+
+/* ---------- statistik ---------- */
+/* app.css mengunci .stats ke 3 kolom; tab Ringkasan punya 4 kartu, jadi
+   pola 3-kolom menyisakan satu kartu yatim di baris kedua. */
+.stats.stats-4{grid-template-columns:repeat(2,1fr)}
+@media (min-width:900px){.stats.stats-4{grid-template-columns:repeat(4,1fr)}}
+.stats.stats-4 .num{overflow-wrap:anywhere}
+
+/* dua kolom berdampingan mulai desktop (Kantong Parkir | Transaksi) */
+.adm-cols{display:grid;gap:0}
+@media (min-width:1024px){.adm-cols{grid-template-columns:1fr 1fr;gap:24px;align-items:start}}
+
+/* ---------- form ---------- */
+/* jarak antar-field sudah datang dari .fld{margin-bottom:14px} di app.css */
+.admin-form{display:flex;flex-direction:column}
+.admin-form .row2{display:grid;grid-template-columns:1fr;gap:0 12px}
+@media (min-width:420px){.admin-form .row2{grid-template-columns:1fr 1fr}}
+.admin-form>.btn{margin-top:6px}
+
+/* blok bantuan: tombol aksi + kalimat penjelas */
+.adm-hint{display:flex;flex-direction:column;gap:8px;margin:-2px 0 16px}
+.adm-hint p{font-size:.78rem;line-height:1.55;color:var(--muted)}
+textarea.input{resize:vertical;font-family:inherit;min-height:84px;line-height:1.5}
+
+.chk{display:flex;align-items:center;gap:10px;padding:6px 2px;cursor:pointer;
+  font-size:.9rem;font-weight:600;min-height:44px}
+.chk input{width:20px;height:20px;flex:none;accent-color:var(--blue-600);cursor:pointer}
+
+/* baris tombol yang menumpuk di layar sempit */
+.adm-btnrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.adm-btnrow .btn{flex:1 1 140px}
+
+/* ---------- grid QR ---------- */
+.qr-grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width:420px){.qr-grid{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}}
+.qr-card{background:var(--card);border-radius:var(--r-md);padding:16px;
+  box-shadow:0 8px 20px rgba(8,20,70,.1);
+  display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+/* Ruang QR dipesan lebih dulu (160px + padding): qrcodejs mengisi <img>
+   dengan data-URL yang butuh sesaat untuk ter-decode, tanpa ini kartu
+   melompat tingginya begitu gambar muncul. */
+.qr-card .qrbox{padding:12px;min-height:184px;display:grid;place-items:center;width:100%}
+.qr-card .qrbox img,.qr-card .qrbox canvas{max-width:100%;height:auto}
+.qr-card .t{font-weight:700;font-size:.92rem;overflow-wrap:anywhere}
+.qr-card .s{font-size:.78rem;color:var(--text-soft);overflow-wrap:anywhere}
+.qr-card .btn{width:100%}
+
+/* pratinjau QR kustom tidak boleh melebar keluar kartu di ponsel */
+.qrbox{max-width:100%}
+.qrbox img,.qrbox canvas{max-width:100%;height:auto}
+
+/* ---------- strip status hak tulis ---------- */
+.adm-statuswrap{padding-bottom:0}
+.adm-status{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:var(--r-sm);
+  font-size:.84rem;line-height:1.5;border:1px solid transparent}
+.adm-status .ic{font-size:18px;flex:none;line-height:1.3}
+.adm-status p{overflow-wrap:anywhere}
+.adm-status .btn{margin-top:8px;text-decoration:none}
+.adm-status.ok{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.3);color:#15803d}
+.adm-status.warn{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.35);color:#92400e}
+.adm-status.demo{background:var(--blue-200);border-color:rgba(37,99,235,.25);color:var(--blue-800)}
+
+/* placeholder saat menunggu snapshot pertama */
+.adm-loading{padding:28px 20px}
+.adm-loading .ic{font-size:32px;animation:adm-pulse 1.4s ease-in-out infinite}
+@keyframes adm-pulse{50%{opacity:.35}}
+
+/* ---------- aksesibilitas ---------- */
+@media (prefers-reduced-motion:reduce){
+  .admin-tabs button{transition:none}
+  .adm-loading .ic{animation:none}
+}

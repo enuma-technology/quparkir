@@ -39,6 +39,11 @@ export function durasiLabel(ms) {
   const j = Math.floor(menit / 60), m = menit % 60;
   return (j ? `${j} jam ` : "") + `${m} menit`;
 }
+// poin loyalitas: 10 poin untuk tiap sesi parkir yang sudah selesai (check-out + bayar)
+export const POIN_PER_SESI = 10;
+export const hitungPoin = (sessions) =>
+  (Array.isArray(sessions) ? sessions : []).filter(s => s?.status === "done").length * POIN_PER_SESI;
+
 // tarif: motor 2000 jam pertama lalu 1000/jam; mobil 3000 lalu 2000/jam
 export function hitungTarif(type, ms) {
   const jam = Math.max(1, Math.ceil(ms / 3600000));

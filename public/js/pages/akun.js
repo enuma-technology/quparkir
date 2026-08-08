@@ -5,53 +5,132 @@ import { appHeader } from "../parts.js";
 import { go, render } from "../router.js";
 import { payQRIS } from "../pay.js";
 
+const ROLES = ["pelanggan", "petugas", "admin"];
+const PROVIDER = { google: "Google", email: "Email", anonymous: "Tamu" };
+const TOPUP_MIN = 10000, TOPUP_MAX = 1000000;
+const NOMINAL = [25000, 50000, 100000, 200000];
+
+const titel = (s) => (s || "").charAt(0).toUpperCase() + (s || "").slice(1);
+const providerLabel = (u) => PROVIDER[u.provider] || (u.anon ? "Tamu" : (u.email ? "Email" : "—"));
+
+// Judul kelompok menu
+const group = (title, items) =>
+  h("section.section", {}, [h(".head", {}, [h("h2", { text: title })]), ...[].concat(items)]);
+
+// Baris menu: ikon → judul/keterangan → chevron. `href` membuatnya jadi tautan.
+function item({ ic, t, s, href, onclick, kind = "" }) {
+  const tag = (href ? "a" : "button") + ".acc-item" + (kind ? "." + kind : "");
+  return h(tag, href ? { href } : { type: "button", onclick }, [
+    h(".ic", { text: ic }),
+    h("div", { style: "flex:1;min-width:0" }, [h(".t", { text: t }), s ? h(".s", { text: s }) : null]),
+    h("span.go", { "aria-hidden": "true", text: "›" }),
+  ]);
+}
+
+// Modal top up: pilihan nominal cepat + nominal bebas, lalu bayar via QRIS.
+function topUpModal(u) {
+  const inp = h("input.input", { type: "number", inputmode: "numeric", min: TOPUP_MIN, max: TOPUP_MAX, placeholder: "50000", value: "50000" });
+  const chips = h(".topup-chips");
+  const paint = () => [...chips.children].forEach(c => {
+    const on = c.dataset.v === inp.value;
+    c.classList.toggle("active", on);
+    c.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+
+  NOMINAL.forEach(n => chips.append(
+    h("button", { type: "button", dataset: { v: String(n) }, text: rupiah(n), onclick: () => { inp.value = String(n); paint(); } })
+  ));
+  inp.addEventListener("input", paint);
+  paint();
+
+  const submit = async () => {
+    const amount = Number(inp.value);
+    if (!Number.isInteger(amount) || amount < TOPUP_MIN || amount > TOPUP_MAX)
+      return toast(`Nominal harus bilangan bulat ${rupiah(TOPUP_MIN)} – ${rupiah(TOPUP_MAX)}`, "err");
+    $("#modalHost").innerHTML = "";
+    const ok = await payQRIS({ amount, title: "Top Up QuPay" });
+    if (!ok) return toast("Top up dibatalkan", "err");
+    const cur = await Promise.resolve(DB.wallet.get(u.uid));
+    await DB.wallet.set(u.uid, cur + amount);
+    toast("Top up berhasil", "ok");
+    render();
+  };
+
+  modal("Top Up QuPay", h("div", {}, [
+    h("p.muted", { style: "font-size:.8rem;font-weight:700;margin:2px 0 10px", text: "Pilih nominal" }),
+    chips,
+    h("label.field", {}, [h("span", { text: `Nominal lain (${rupiah(TOPUP_MIN)} – ${rupiah(TOPUP_MAX)})` }), inp]),
+    h("button.btn", { onclick: submit }, "Lanjut Bayar"),
+    h("p.center.muted", { style: "margin-top:10px", html: "<small>Pembayaran diproses lewat QRIS</small>" }),
+  ]));
+}
+
+// Kartu saldo QuPay + aksi cepat
+function balanceCard(u, bal) {
+  return h(".acc-balance", {}, [
+    h(".lbl", { text: "Saldo QuPay" }),
+    h(".amt", { text: rupiah(bal) }),
+    h("p.sub", { text: "Untuk pembayaran parkir tanpa uang tunai" }),
+    h(".acts", {}, [
+      h("button.primary", { type: "button", onclick: () => topUpModal(u) }, "＋ Top Up"),
+      h("button", { type: "button", onclick: () => go("#/riwayat") }, "🧾 Riwayat"),
+    ]),
+  ]);
+}
+
+// Pengalih peran — hanya berguna di mode demo (Firebase mengatur role via Firestore)
+function roleBar(u) {
+  const bar = h(".rolebar");
+  ROLES.forEach(r => bar.append(h("button" + (u.role === r ? ".active" : ""), {
+    type: "button",
+    onclick: () => { Auth.setRole(r); toast("Peran: " + r, "ok"); render(); },
+  }, titel(r))));
+  return bar;
+}
+
 export default async function akunPage(view) {
   const u = Auth.current();
   const bal = await Promise.resolve(DB.wallet.get(u.uid));
 
-  const roleBar = h(".rolebar");
-  ["pelanggan", "petugas", "admin"].forEach(r => roleBar.append(
-    h("button" + (u.role === r ? ".active" : ""), { onclick: () => { Auth.setRole(r); toast("Peran: " + r, "ok"); render(); } }, r[0].toUpperCase() + r.slice(1))
-  ));
+  const akunItems = [
+    item({ ic: "🚗", t: "Kendaraan Saya", s: "Kelola motor & mobil terdaftar", onclick: () => go("#/kendaraan") }),
+    item({ ic: "🧾", t: "Riwayat Parkir", s: "Semua sesi & pembayaran", onclick: () => go("#/riwayat") }),
+    item({ ic: "🎫", t: "E-Ticket", s: "Tiket sesi parkir aktif", onclick: () => go("#/status") }),
+  ];
 
-  view.append(
+  const kelolaItems = [
+    u.role !== "pelanggan" ? item({ ic: "🦺", t: "Dashboard Petugas", s: "Check-in & check-out di lokasi", onclick: () => go("#/petugas") }) : null,
+    // panel admin adalah halaman tersendiri (admin.html), bukan rute SPA
+    u.role === "admin" ? item({ ic: "🏛️", t: "Panel Admin", s: "Lokasi, promo, banner & QR", onclick: () => location.assign("admin.html") }) : null,
+  ].filter(Boolean);
+
+  // view.append() menampilkan `null` sebagai teks — saring dulu bagian bersyaratnya
+  view.append(...[
     appHeader({ title: "Akun", sub: "Pengaturan & profil", icons: false }),
-    h("div.pad", {}, [
-      h(".card.pad", { style: "margin-bottom:14px;display:flex;align-items:center;gap:14px" }, [
-        h("div", { style: "width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#93c5fd,#2563eb);display:grid;place-items:center;color:#fff;font-weight:800;font-size:1.3rem", text: (u.name || "U")[0].toUpperCase() }),
-        h("div", { style: "flex:1" }, [h("h3", { text: u.name }), h("p.muted", { text: u.email || (u.anon ? "Akun tamu" : "—") }),
-          h("span.pill.info", { style: "margin-top:6px", text: "Login: " + (u.provider || "—") })]),
-      ]),
 
-      h(".card.pad", { style: "margin-bottom:14px" }, [
-        h(".row", {}, [h("div", { style: "flex:1" }, [h("h4", { text: "Saldo QuPay" }), h("p.muted", { text: "Untuk pembayaran cashless" })]),
-          h("b", { style: "color:var(--blue-700);font-size:1.3rem", text: rupiah(bal) })]),
-        h("button.btn.sm", { style: "margin-top:10px", onclick: async () => {
-          const inp = h("input.input", { type: "number", placeholder: "50000", value: "50000" });
-          modal("Top Up QuPay", h("div", {}, [h("label.field", {}, [h("span", { text: "Nominal (Rp 10.000 – Rp 1.000.000)" }), inp]),
-            h("button.btn", { onclick: async () => {
-              const amount = Number(inp.value);
-              if (!Number.isInteger(amount) || amount < 10000 || amount > 1000000)
-                return toast("Nominal harus bilangan bulat 10.000 – 1.000.000", "err");
-              $("#modalHost").innerHTML = "";
-              const ok = await payQRIS({ amount, title: "Top Up QuPay" });
-              if (!ok) return toast("Top up dibatalkan", "err");
-              const cur = await Promise.resolve(DB.wallet.get(u.uid));
-              await DB.wallet.set(u.uid, cur + amount);
-              toast("Top up berhasil", "ok"); render();
-            } }, "Top Up")]));
-        } }, "＋ Top Up"),
+    h(".card.acc-profile", {}, [
+      h(".acc-avatar", { text: (u.name || "U")[0].toUpperCase() }),
+      h(".who", {}, [
+        h("h3", { text: u.name || "Pengguna QuParkir" }),
+        h(".mail", { text: u.email || (u.anon ? "Akun tamu" : "—") }),
+        h(".acc-tags", {}, [
+          h("span.pill.info", { text: titel(u.role) }),
+          h("span.pill", { text: "Login " + providerLabel(u) }),
+        ]),
       ]),
-
-      ...(MODE === "demo" ? [h("h4", { style: "margin:6px 4px 8px", text: "Ganti Peran (demo)" }), roleBar] : []),
-
-      h("div", { style: "margin-top:14px" }, [
-        u.role !== "pelanggan" ? h("button.btn.ghost", { style: "margin-bottom:10px", onclick: () => go("#/petugas") }, "🦺 Dashboard Petugas") : null,
-        u.role === "admin" ? h("button.btn.ghost", { style: "margin-bottom:10px", onclick: () => go("#/admin") }, "🏛️ Dashboard Admin") : null,
-        h("button.btn.ghost", { style: "margin-bottom:10px", onclick: () => go("#/kendaraan") }, "🚗 Kendaraan Saya"),
-        h("button.btn.danger", { onclick: async () => { await Auth.logout(); } }, "Keluar"),
-      ]),
-      h("p.center.muted", { style: "margin-top:14px", html: "<small>Backend aktif: <b>" + MODE.toUpperCase() + "</b> · QuParkir Surakarta</small>" }),
     ]),
-  );
+
+    h("div.pad", { style: "padding-bottom:0" }, [balanceCard(u, bal)]),
+
+    group("Akun Saya", akunItems),
+    kelolaItems.length ? group("Kelola", kelolaItems) : null,
+    MODE === "demo" ? group("Ganti Peran (demo)", roleBar(u)) : null,
+
+    group("Lainnya", [
+      item({ ic: "🌐", t: "Tentang QuParkir", s: "Informasi layanan & bantuan", href: "index.html" }),
+      item({ ic: "🚪", t: "Keluar", s: "Akhiri sesi di perangkat ini", kind: "danger", onclick: () => Auth.logout() }),
+    ]),
+
+    h("p.acc-foot", { html: "Backend aktif: <b>" + MODE.toUpperCase() + "</b> · QuParkir Surakarta" }),
+  ].filter(Boolean));
 }

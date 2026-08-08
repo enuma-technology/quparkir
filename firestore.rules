@@ -10,9 +10,13 @@ service cloud.firestore {
 
     function isSignedIn() { return request.auth != null; }
     function uid() { return request.auth.uid; }
+    // Catatan: dokumen users/{uid} dibuat saat login TANPA field 'role'
+    // (role hanya boleh diisi admin lewat Console/server). Karena itu wajib
+    // memakai data.get('role', default) — data.role akan melempar evaluation
+    // error saat field-nya belum ada dan membuat rule menolak diam-diam.
     function roleOf(u) {
       return exists(/databases/$(database)/documents/users/$(u))
-        ? get(/databases/$(database)/documents/users/$(u)).data.role
+        ? get(/databases/$(database)/documents/users/$(u)).data.get('role', 'pelanggan')
         : 'pelanggan';
     }
     function isAdmin() { return isSignedIn() && roleOf(uid()) == 'admin'; }
@@ -76,6 +80,17 @@ service cloud.firestore {
     // Petugas
     match /officers/{id} {
       allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Konten CMS admin (admin.html): promo & banner beranda — publik boleh
+    // baca (ditampilkan ke semua pengguna), hanya admin boleh menulis.
+    match /promos/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /banners/{id} {
+      allow read: if true;
       allow write: if isAdmin();
     }
   }

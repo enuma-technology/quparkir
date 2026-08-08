@@ -21,3 +21,8 @@ serviceAccount.json
 # OS / editor
 Thumbs.db
 .DS_Store
+# sisa berkas yang dihapus saat masih terbuka di mount FUSE/NTFS
+.fuse_hidden*
+
+# Uji E2E (scripts/test) — tangkapan layar lokal
+scripts/test/.test-shots/

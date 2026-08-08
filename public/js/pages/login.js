@@ -1,7 +1,10 @@
-import { h, $, toast } from "../util.js";
+import { h, toast } from "../util.js";
 import { Auth } from "../auth.js";
 import { go } from "../router.js";
 import { USE_FIREBASE, firebaseConfig } from "../config.js";
+import { authShell, field, setError, clearError, busy, providerButton, markAuthView } from "../parts.js";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // map kode error Firebase Auth → pesan Indonesia (dipakai resetPassword;
 // login/register sudah dapat pesan ramah dari friendly() di auth.js)
@@ -33,53 +36,61 @@ async function resetPassword(email) {
 }
 
 export default function loginPage(view) {
-  const email = h("input.input", { type: "email", placeholder: "email@contoh.com", autocomplete: "email" });
-  const pass = h("input.input", { type: "password", placeholder: "kata sandi", autocomplete: "current-password" });
-  const btn = h("button.btn", { onclick: masuk }, "Masuk");
+  const email = h("input.input", { type: "email", placeholder: "email@contoh.com", autocomplete: "email", inputmode: "email" });
+  const pass = h("input.input", { type: "password", placeholder: "Kata sandi", autocomplete: "current-password" });
+  const btn = h("button.btn", { type: "submit" }, "Masuk");
 
   async function masuk() {
     const e = email.value.trim(), p = pass.value;
-    if (!e || !p) return toast("Lengkapi email & kata sandi", "err");
-    btn.disabled = true;
-    try { await Auth.loginEmail(e, p); toast("Berhasil masuk", "ok"); }
-    catch (err) { toast(err.message || "Gagal masuk", "err"); btn.disabled = false; }
+    if (!e) return setError(email, "Email wajib diisi");
+    if (!EMAIL_RE.test(e)) return setError(email, "Format email tidak valid");
+    if (!p) return setError(pass, "Kata sandi wajib diisi");
+    clearError(email); clearError(pass);
+
+    busy(btn, true, "Memproses…");
+    try {
+      await Auth.loginEmail(e, p);
+      toast("Berhasil masuk", "ok");
+    } catch (err) {
+      busy(btn, false, "Masuk");
+      setError(pass, err.message || "Gagal masuk");
+    }
   }
-  async function quick(fn, label) {
+
+  async function quick(btnEl, fn, label) {
+    btnEl.disabled = true;
     try { await fn(); toast("Berhasil masuk", "ok"); }
-    catch (err) { toast(err.message || "Gagal: " + label, "err"); }
+    catch (err) { btnEl.disabled = false; toast(err.message || "Gagal: " + label, "err"); }
   }
-  // Enter untuk submit
-  [email, pass].forEach(i => i.addEventListener("keydown", e => { if (e.key === "Enter") masuk(); }));
 
-  view.append(h(".auth", {}, [
-    h(".logo", { text: "🅿️" }),
-    h("h1", { text: "Masuk" }),
-    h("p.lead", { text: "Selamat datang kembali di QuParkir." }),
+  const gBtn = providerButton({
+    svg: true, title: "Lanjut dengan Google", sub: "Masuk sekali klik",
+    onclick: () => quick(gBtn, () => Auth.loginGoogle(), "Google"),
+  });
+  const tBtn = providerButton({
+    icon: "👤", title: "Masuk sebagai Tamu", sub: "Coba dulu tanpa daftar",
+    onclick: () => quick(tBtn, () => Auth.loginAnon(), "Tamu"),
+  });
 
-    h(".card.pad", { style: "margin-bottom:16px" }, [
-      h("label.field", {}, [h("span", { text: "Email" }), email]),
-      h("label.field", { style: "margin-bottom:14px" }, [h("span", { text: "Kata sandi" }), pass]),
-      btn,
-      h("p.center", { style: "margin-top:10px" }, [
-        h("a", {
-          text: "Lupa sandi?",
-          style: "color:var(--blue-600);cursor:pointer;font-weight:700;font-size:.85rem",
-          onclick: () => resetPassword(email.value.trim()),
-        }),
+  view.append(authShell({
+    title: "Masuk",
+    sub: "Selamat datang kembali. Lanjutkan parkir digital Anda.",
+    onsubmit: masuk,
+    card: [
+      field("Email", email),
+      field("Kata sandi", pass, { toggle: true }),
+      h(".fld-aux", {}, [
+        h("button.linkbtn", { type: "button", onclick: () => resetPassword(email.value.trim()) }, "Lupa sandi?"),
       ]),
+      btn,
+    ],
+    alt: [gBtn, tBtn],
+    foot: h("p.auth-foot", {}, [
+      document.createTextNode("Belum punya akun? "),
+      h("a", { onclick: () => go("#/register"), text: "Daftar sekarang" }),
     ]),
+    note: "© 2026 QuParkir · Kota Surakarta",
+  }));
 
-    h(".sep", {}, "atau"),
-    h("button.login", { onclick: () => quick(() => Auth.loginGoogle(), "Google") }, [
-      h("span.e", { text: "🟦" }), h("span", {}, [h("b", { text: "Lanjut dengan Google" }), h("small", { text: "Sekali klik" })]),
-    ]),
-    h("button.login", { onclick: () => quick(() => Auth.loginAnon(), "Tamu") }, [
-      h("span.e", { text: "👤" }), h("span", {}, [h("b", { text: "Masuk sebagai Tamu" }), h("small", { text: "Coba tanpa daftar" })]),
-    ]),
-
-    h("p.center", { style: "margin-top:18px", html: 'Belum punya akun? ' }),
-    h("button.btn.ghost", { onclick: () => go("#/register") }, "Daftar Akun Baru"),
-    h("p.center", { style: "opacity:.7;margin-top:16px;font-size:.78rem", text: "© 2026 QuParkir · Surakarta" }),
-  ]));
-  $("#view").classList.add("noTab");
+  return markAuthView();
 }

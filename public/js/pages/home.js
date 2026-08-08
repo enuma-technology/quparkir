@@ -1,5 +1,5 @@
-import { h, rupiah, modal } from "../util.js";
-import { DB } from "../data.js";
+import { h, rupiah, modal, hitungPoin } from "../util.js";
+import { DB, DEFAULT_PROMOS } from "../data.js";
 import { Auth } from "../auth.js";
 import { appHeader } from "../parts.js";
 import { go } from "../router.js";
@@ -11,25 +11,75 @@ const QUICK = [
   { e: "🎫", t: "E-Ticket", go: "#/status" },
   { e: "🧾", t: "Riwayat", go: "#/riwayat" },
   { e: "💳", t: "Top Up", go: "#/akun" },
-  { e: "🎁", t: "Promo", act: promoModal },
+  { e: "🎁", t: "Promo", act: () => promoModal() },
   { e: "🆘", t: "Bantuan", act: bantuanModal },
 ];
 
-const PROMOS = [
-  { kik: "BARU", t: "Cashback 50%", s: "Semua transaksi parkir pakai QuPay · 27 Feb – 31 Agu 2026" },
-  { kik: "HEMAT", t: "Gratis Biaya Admin", s: "Top up QuPay pertama tanpa biaya tambahan" },
-  { kik: "POIN", t: "2× Poin", s: "Check-in di kantong parkir favoritmu akhir pekan ini" },
-];
+// Diperbarui oleh langganan DB.promos di homePage(); dipakai sebagai isi
+// default modal "Promo" tile (mis. saat dipanggil sebelum data live tiba).
+let livePromos = DEFAULT_PROMOS;
 
-function promoModal() {
+function promoModal(list = livePromos) {
   modal("Promo", h("div", {}, [
-    ...PROMOS.map(p => h(".li", {}, [
+    ...(list.length ? list.map(p => h(".li", {}, [
       h(".ic", { text: "🎁" }),
-      h("div", { style: "flex:1" }, [h(".t", { text: p.t }), h(".s", { text: p.s })]),
-      h(".end", {}, [h("span.pill", { text: p.kik })]),
-    ])),
+      h("div", { style: "flex:1" }, [h(".t", { text: p.title }), h(".s", { text: p.desc })]),
+      h(".end", {}, [p.tag ? h("span.pill", { text: p.tag }) : null]),
+    ])) : [h(".empty", {}, [h(".ic", { text: "🎁" }), h("p", { text: "Belum ada promo aktif." })])]),
     h(".s", { style: "margin-top:10px;text-align:center", text: "Syarat & ketentuan berlaku" }),
   ]));
+}
+
+// ---- saldo bisa disembunyikan (pilihan tersimpan antar-sesi) ----
+const HIDE_KEY = "quparkir_hide_balance_v1";
+const isHidden = () => { try { return localStorage.getItem(HIDE_KEY) === "1"; } catch { return false; } };
+const setHidden = (v) => { try { localStorage.setItem(HIDE_KEY, v ? "1" : "0"); } catch { /* mode privat */ } };
+
+const EYE_ON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const EYE_OFF = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M10.7 6.2A10.6 10.6 0 0 1 12 6c6 0 9.5 6 9.5 6a17.2 17.2 0 0 1-3 3.7"/>
+  <path d="M6.7 7.9A16.8 16.8 0 0 0 2.5 12S6 18 12 18a10 10 0 0 0 3.4-.6"/>
+  <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/></svg>`;
+
+// Lambang dompet QuPay. Sebelumnya kotak 40px ini diisi teks "QuPay" yang
+// tidak muat dan meluber; namanya toh sudah tertulis di sebelahnya.
+const WALLET_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M20 8.5V7.5A2.5 2.5 0 0 0 17.5 5H5.5A2.5 2.5 0 0 0 3 7.5v9A2.5 2.5 0 0 0 5.5 19h12a2.5 2.5 0 0 0 2.5-2.5v-1"/>
+  <path d="M21 9.5h-4.1a2.5 2.5 0 0 0 0 5H21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1Z"/>
+  <circle cx="16.9" cy="12" r="1" fill="currentColor" stroke="none"/></svg>`;
+
+// Kartu QuPay: nominal + tombol mata untuk menyamarkannya
+function walletCard(bal) {
+  let hidden = isHidden();
+  const amount = h("b");
+  const eye = h("button.bal-eye", { type: "button" });
+
+  function paint() {
+    amount.textContent = hidden ? "Rp ••••••" : rupiah(bal);
+    amount.classList.toggle("masked", hidden);
+    eye.innerHTML = hidden ? EYE_OFF : EYE_ON;
+    eye.setAttribute("aria-pressed", hidden ? "true" : "false");
+    eye.setAttribute("aria-label", hidden ? "Tampilkan saldo" : "Sembunyikan saldo");
+    eye.title = eye.getAttribute("aria-label");
+  }
+  eye.addEventListener("click", (e) => {
+    e.stopPropagation();               // jangan ikut membuka halaman akun
+    hidden = !hidden; setHidden(hidden); paint();
+  });
+  paint();
+
+  return h(".wallet", {}, [
+    h(".wlogo", { html: WALLET_ICON }),
+    h(".wname", {}, [document.createTextNode("QuPay"), h("small", { text: "Saldo parkir cashless" })]),
+    h(".bal", { onclick: () => go("#/akun") }, [
+      h("small", { text: "Saldo" }),
+      h(".bal-row", {}, [amount, eye]),
+    ]),
+  ]);
 }
 
 function bantuanModal() {
@@ -52,39 +102,34 @@ export default async function homePage(view) {
   const u = Auth.current();
   const bal = await Promise.resolve(DB.wallet.get(u.uid));
 
+  const bannerWrap = h("div");           // pengumuman dari admin (opsional, tersembunyi bila kosong)
   const activeSlot = h("div");           // banner sesi aktif
+  const promoWrap = h("section.section");
   const nearby = h(".cards");            // kartu terdekat
-  const dots = h(".dots");
-  const header = appHeader({ title: `Hi, ${u.name} 👋`, sub: "Mau parkir di mana hari ini?", points: 0 });
+  // points:null → badge tampil "—" sampai data sesi tiba (bukan "0" yang menyesatkan)
+  const header = appHeader({ title: `Hi, ${u.name} 👋`, sub: "Mau parkir di mana hari ini?", points: null });
 
   view.append(
     header,
-    h(".wallet", {}, [
-      h(".wlogo", { text: "QuPay" }),
-      h(".wname", {}, [document.createTextNode("QuPay"), h("small", { text: "Saldo parkir cashless" })]),
-      h(".bal", { onclick: () => go("#/akun") }, [h("small", { text: "Saldo" }), document.createTextNode(" "), h("b", { text: rupiah(bal).replace("Rp ", "Rp ") })]),
-    ]),
+    walletCard(bal),
+    bannerWrap,
     activeSlot,
     h("nav.grid", {}, QUICK.map(q =>
       h("button.tile", { onclick: () => q.act ? q.act() : go(q.go) }, [h("span.ic" + (q.accent ? ".accent" : ""), { text: q.e }), h("span", { text: q.t })])
     )),
-    promoSection(dots),
+    promoWrap,
     h("section.section", {}, [
       h(".head", {}, [h("h2", { text: "Parkir Terdekat" }), h("a", { onclick: () => go("#/cari") }, "Peta")]),
       nearby,
     ]),
   );
 
-  // poin nyata: 10 poin per sesi selesai
-  try {
-    const sesi = await Promise.resolve(DB.sessions.listFor(u.uid));
-    const poin = sesi.filter(s => s.status === "done").length * 10;
-    const el = header.querySelector(".points");
-    if (el) el.textContent = "⭐ Poin : " + poin;
-  } catch { /* abaikan */ }
+  // Satu langganan untuk dua hal yang sumbernya sama: poin (dari sesi selesai)
+  // dan banner sesi aktif. Keduanya ikut berubah begitu check-out tercatat.
+  const unsubS = DB.sessions.subscribeFor(u.uid, (list) => {
+    header.setPoints(hitungPoin(list));
 
-  // sesi aktif
-  const unsubS = DB.sessions.subscribeActive(u.uid, (s) => {
+    const s = list.find(z => z.status === "active") || null;
     activeSlot.innerHTML = "";
     if (!s) return;
     activeSlot.append(h("section.section", {}, [
@@ -101,32 +146,48 @@ export default async function homePage(view) {
   const unsubL = DB.locations.subscribe((locs) => {
     nearby.innerHTML = "";
     locs.slice(0, 5).forEach((l, i) => {
-      const avail = (l.capMotor - l.occMotor) + (l.capCar - l.occCar);
+      const avail = ((l.capMotor || 0) - (l.occMotor || 0)) + ((l.capCar || 0) - (l.occCar || 0));
       nearby.append(h(".pcard", { onclick: () => go("#/cari") }, [
         h(".thumb", {}, [document.createTextNode(["🏬", "🛍️", "🏯", "🏛️", "🎓"][i % 5]),
           h("span.badge", { text: avail > 5 ? "TERSEDIA" : (avail > 0 ? "TERBATAS" : "PENUH") })]),
         h(".body", {}, [h("h4", { text: l.name }),
-          h(".meta", {}, [h("span", { text: "🅿️ " + avail + " slot" }), h("span.price", { text: rupiah(l.tarif.motor) + "/jam" })])]),
+          h(".meta", {}, [h("span", { text: "🅿️ " + avail + " slot" }), h("span.price", { text: rupiah(l.tarif?.motor) + "/jam" })])]),
       ]));
     });
   });
 
-  return () => { unsubS && unsubS(); unsubL && unsubL(); };
+  // promo & banner (isi diatur lewat admin.html) — UI dibentuk otomatis dari teks
+  const unsubP = DB.promos.subscribe((list) => { livePromos = list.length ? list : DEFAULT_PROMOS; paintPromos(promoWrap, livePromos); });
+  const unsubB = DB.banners.subscribe((list) => paintBanners(bannerWrap, list));
+
+  return () => { unsubS && unsubS(); unsubL && unsubL(); unsubP && unsubP(); unsubB && unsubB(); };
 }
 
-function promoSection(dots) {
-  const slides = [
-    { kik: "BARU", h: 'Cashback <b>50%</b>', p: "Semua transaksi parkir pakai QuPay · 27 Feb – 31 Agu 2026" },
-    { kik: "HEMAT", h: 'Gratis Biaya<br>Admin', p: "Top up QuPay pertama tanpa biaya tambahan", alt: true },
-    { kik: "POIN", h: '2× Poin', p: "Check-in di kantong parkir favoritmu akhir pekan ini" },
-  ];
-  const car = h(".carousel", {}, slides.map(s =>
-    h(".promo" + (s.alt ? ".alt" : ""), {}, [h("span.blob"), h("span.kik", { text: s.kik }), h("h3", { html: s.h }), h("p", { text: s.p })])
+// Pengumuman singkat yang diisi admin (teks polos, tanpa HTML). Tersembunyi
+// total bila tak ada banner aktif — tidak menyisakan ruang kosong di layout.
+function paintBanners(wrap, banners) {
+  wrap.innerHTML = "";
+  const active = banners.filter(b => b.active !== false && (b.text || "").trim());
+  if (!active.length) return;
+  wrap.append(h("section.section", {}, active.map(b => h(".li.banner-item", {}, [
+    h(".ic", { text: "📣" }),
+    h("div", { style: "flex:1" }, [h(".t", { text: b.text }), b.subtext ? h(".s", { text: b.subtext }) : null]),
+  ]))));
+}
+
+// Kartu carousel promo dibangun murni dari data — admin cukup isi tag/judul/
+// deskripsi, gaya kartu (varian "alt") berselang-seling otomatis per index.
+function paintPromos(wrap, promos) {
+  wrap.innerHTML = "";
+  if (!promos.length) return;
+  const dots = h(".dots");
+  const car = h(".carousel", {}, promos.map((p, i) =>
+    h(".promo" + (i % 2 ? ".alt" : ""), {}, [h("span.blob"), h("span.kik", { text: p.tag || "" }), h("h3", { text: p.title || "" }), h("p", { text: p.desc || "" })])
   ));
-  dots.append(...slides.map((_, i) => h("i" + (i === 0 ? ".on" : ""))));
+  dots.append(...promos.map((_, i) => h("i" + (i === 0 ? ".on" : ""))));
   car.addEventListener("scroll", () => {
-    const i = Math.round(car.scrollLeft / (car.scrollWidth / slides.length));
-    [...dots.children].forEach((d, n) => d.classList.toggle("on", n === Math.min(i, slides.length - 1)));
+    const i = Math.round(car.scrollLeft / (car.scrollWidth / promos.length));
+    [...dots.children].forEach((d, n) => d.classList.toggle("on", n === Math.min(i, promos.length - 1)));
   });
-  return h("section.section", {}, [h(".head", {}, [h("h2", { text: "Promo" }), h("a", { onclick: promoModal }, "Lihat semua")]), car, dots]);
+  wrap.append(h(".head", {}, [h("h2", { text: "Promo" }), h("a", { onclick: () => promoModal(promos) }, "Lihat semua")]), car, dots);
 }

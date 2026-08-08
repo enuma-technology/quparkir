@@ -1,16 +1,24 @@
 {
+  "id": "/",
   "name": "QuParkir — Parkir Digital Surakarta",
   "short_name": "QuParkir",
-  "start_url": "./index.html",
+  "description": "Sistem parkir digital berbasis e-ticket dan QR code untuk transparansi retribusi Kota Surakarta.",
+  "start_url": "./app.html",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#0a1750",
   "theme_color": "#1d4ed8",
   "lang": "id",
+  "categories": ["travel", "utilities", "government"],
   "icons": [
-    {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231d4ed8'/><text x='50' y='72' font-size='62' text-anchor='middle'>P</text></svg>",
-      "sizes": "any",
-      "type": "image/svg+xml"
-    }
+    { "src": "./assets/logo/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/logo/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/logo/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Scan & Check-in", "url": "./app.html#/checkin" },
+    { "name": "Cari Parkir", "url": "./app.html#/cari" },
+    { "name": "Riwayat", "url": "./app.html#/riwayat" }
   ]
 }

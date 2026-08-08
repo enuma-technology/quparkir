@@ -1,10 +1,12 @@
 // ============================================================
 // QuParkir — Service Worker sederhana & aman
-// navigate: network-first (fallback index.html)
+// navigate: network-first (fallback dokumen yang sama, lalu landing index.html)
 // asset same-origin: stale-while-revalidate
 // CDN (gstatic/unpkg/jsdelivr): cache-first
 // ============================================================
-const VER = "qp-v1";
+const VER = "qp-v4";
+// Dokumen yang ikut disimpan saat pertama diakses (compro + shell aplikasi).
+const DOCS = ["/index.html", "/app.html"];
 const CDN_HOSTS = ["www.gstatic.com", "unpkg.com", "cdn.jsdelivr.net"];
 
 self.addEventListener("install", () => { self.skipWaiting(); });
@@ -22,15 +24,23 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
 
-  // navigasi halaman → network-first, fallback cache index
+  // navigasi halaman → network-first, fallback dokumen yang sama lalu landing
   if (req.mode === "navigate") {
     e.respondWith((async () => {
+      // "/" dan "/app" dipetakan ke dokumen fisiknya agar cache konsisten
+      let key = url.pathname;
+      if (key === "/" || key === "") key = "/index.html";
+      else if (key === "/app" || key === "/app/") key = "/app.html";
       try {
         const res = await fetch(req);
-        try { const c = await caches.open(VER); await c.put("/index.html", res.clone()); } catch (_) {}
+        if (res && res.ok && DOCS.includes(key)) {
+          try { const c = await caches.open(VER); await c.put(key, res.clone()); } catch (_) {}
+        }
         return res;
       } catch (_) {
-        return (await caches.match("/index.html")) || Response.error();
+        return (await caches.match(key))
+            || (await caches.match("/index.html"))
+            || Response.error();
       }
     })());
     return;

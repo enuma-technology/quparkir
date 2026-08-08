@@ -1,0 +1,17 @@
+{
+  "name": "quparkir-test",
+  "private": true,
+  "type": "module",
+  "description": "Uji integrasi Firestore (rules) + end-to-end aplikasi. Terpisah dari public/ agar app tetap tanpa dependensi.",
+  "scripts": {
+    "test:rules": "node rules.mjs",
+    "test:e2e": "node e2e.mjs",
+    "test:skeleton": "node skeleton.mjs",
+    "postinstall": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "firebase": "^12.0.0",
+    "playwright": "^1.49.0"
+  }
+}
