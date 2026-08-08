@@ -4,7 +4,7 @@
 // asset same-origin: stale-while-revalidate
 // CDN (gstatic/unpkg/jsdelivr): cache-first
 // ============================================================
-const VER = "qp-v6";
+const VER = "qp-v7";
 // Dokumen yang ikut disimpan saat pertama diakses (compro + shell aplikasi).
 const DOCS = ["/index.html", "/app.html"];
 const CDN_HOSTS = ["www.gstatic.com", "unpkg.com", "cdn.jsdelivr.net"];
