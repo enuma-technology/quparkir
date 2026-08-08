@@ -477,9 +477,10 @@ label.field span{display:block;font-size:.8rem;font-weight:700;margin-bottom:6px
 /* ---------- halaman akun ---------- */
 .acc-profile{position:relative;z-index:2;margin:-44px 16px 0;padding:16px;display:flex;align-items:center;gap:14px;
   box-shadow:0 14px 34px rgba(8,20,70,.22)}
-.acc-avatar{width:56px;height:56px;border-radius:18px;flex:none;display:grid;place-items:center;
+.acc-avatar{position:relative;overflow:hidden;width:56px;height:56px;border-radius:18px;flex:none;display:grid;place-items:center;
   color:#fff;font-weight:900;font-size:1.35rem;background:linear-gradient(135deg,var(--blue-500),var(--cyan-500));
   box-shadow:0 10px 22px rgba(37,99,235,.35)}
+.acc-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .acc-profile .who{flex:1;min-width:0}
 .acc-profile h3{font-size:1.05rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .acc-profile .mail{margin-top:2px;font-size:.85rem;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

@@ -9,8 +9,9 @@ import { authShell, field, setError, clearError, busy, markAuthView } from "./pa
 import { initData, DB, MODE } from "./data.js";
 import { initAuth, Auth } from "./auth.js";
 import { renderQR } from "./qr.js";
-import { adminPartNode } from "./skeleton.js";
-import { SESSION_KEY } from "./admin-boot.js";
+import { adminPartNode, ADMIN_TABS } from "./skeleton.js";
+import { SESSION_KEY, currentTab } from "./admin-boot.js";
+import { resolveLocationInput } from "./geo-input.js";
 
 // ⚠️ CATATAN KEAMANAN — WAJIB DIBACA SEBELUM DIPAKAI DI PRODUKSI:
 // Username & password di bawah ini tersimpan sebagai teks polos di berkas JS
@@ -165,13 +166,11 @@ function statusStrip() {
 // ============================================================
 // Dashboard: topbar + tab + konten
 // ============================================================
-const TABS = [
-  { id: "ringkasan", label: "📊 Ringkasan", render: renderRingkasan },
-  { id: "lokasi", label: "🅿️ Lokasi", render: renderLokasi },
-  { id: "promo", label: "🎁 Promo", render: renderPromo },
-  { id: "banner", label: "📣 Banner", render: renderBanner },
-  { id: "qris", label: "🧾 Export QRIS", render: renderQris },
-];
+// id + label datang dari ADMIN_TABS (skeleton.js) — satu-satunya sumber, juga
+// dipakai admin-boot.js untuk menggambar kerangka tab yang benar saat refresh.
+// Fungsi render tetap di sini karena butuh DB/Auth yang tidak dimuat admin-boot.js.
+const RENDER = { ringkasan: renderRingkasan, lokasi: renderLokasi, promo: renderPromo, banner: renderBanner, qris: renderQris };
+const TABS = ADMIN_TABS.map(t => ({ ...t, render: RENDER[t.id] }));
 
 function boot(root) {
   if (unmarkAuth) { unmarkAuth(); unmarkAuth = null; }
@@ -184,7 +183,21 @@ function boot(root) {
   // .adm-shell membatasi lebar baca di monitor besar & memberi padding konsisten
   const content = h("div.adm-shell");
   const tabbar = h("nav.admin-tabs");
-  let active = TABS[0].id, cleanup = null;
+  // Tab awal datang dari hash URL (admin-boot.js sudah membaca yang sama
+  // untuk menggambar kerangkanya) — bukan selalu tab pertama — supaya
+  // refresh di tab Lokasi tetap di tab Lokasi.
+  let active = currentTab(), cleanup = null;
+
+  // Tulis tab aktif ke hash dengan replaceState (BUKAN location.hash=…):
+  // tidak menambah entri riwayat per klik tab dan tidak memicu event
+  // "hashchange" — yang sengaja dipakai di bawah hanya untuk navigasi DARI
+  // LUAR (tombol back/forward, tautan admin.html#lokasi, edit URL manual).
+  function pindahTab(id) {
+    if (id === active) return;
+    active = id;
+    history.replaceState(null, "", "#" + id);
+    paintTabs(); paintContent();
+  }
 
   function paintTabs() {
     tabbar.innerHTML = "";
@@ -193,7 +206,7 @@ function boot(root) {
       const btn = h("button" + (t.id === active ? ".active" : ""), {
         type: "button",
         "aria-current": t.id === active ? "page" : false,
-        onclick: () => { if (t.id === active) return; active = t.id; paintTabs(); paintContent(); },
+        onclick: () => pindahTab(t.id),
       }, t.label);
       if (t.id === active) activeBtn = btn;
       tabbar.append(btn);
@@ -207,6 +220,11 @@ function boot(root) {
     content.innerHTML = "";
     cleanup = TABS.find(t => t.id === active).render(content);
   }
+
+  window.addEventListener("hashchange", () => {
+    const id = currentTab();
+    if (id !== active) { active = id; paintTabs(); paintContent(); }
+  });
 
   root.append(
     // topbar + tab satu blok sticky: tingginya tak perlu ditebak lewat offset
@@ -308,6 +326,30 @@ function lokasiForm(existing) {
     },
   }, "🔍 Cari di Google Maps");
 
+  // Isi lat/lng + alamat otomatis dari plus code, URL Google Maps (yang memuat
+  // koordinat), atau koordinat mentah — lihat geo-input.js untuk format yang
+  // dikenali. Tombol terpisah dari Simpan supaya admin bisa cek hasilnya dulu.
+  const lookup = h("input.input", {
+    type: "text",
+    placeholder: "CRQ6+22 Mangkubumen, Kota Surakarta  —  atau tempel link Google Maps",
+  });
+  const terapkanBtn = h("button.btn.sm.ghost", { type: "button" }, "📍 Terapkan");
+  terapkanBtn.addEventListener("click", async () => {
+    busy(terapkanBtn, true, "Mencari…");
+    try {
+      const r = await resolveLocationInput(lookup.value);
+      lat.value = r.lat.toFixed(5);
+      lng.value = r.lng.toFixed(5);
+      if (r.address) alamat.value = r.address;
+      clearError(lat); clearError(lng);
+      toast("Titik ditemukan — cek peta sebelum menyimpan", "ok");
+    } catch (e) {
+      toast(e.message, "err");
+    } finally {
+      busy(terapkanBtn, false, "📍 Terapkan");
+    }
+  });
+
   const simpanBtn = h("button.btn", { type: "button" }, existing ? "Simpan Perubahan" : "Tambah Lokasi");
 
   simpanBtn.addEventListener("click", async () => {
@@ -342,11 +384,15 @@ function lokasiForm(existing) {
 
   return h("div.admin-form", {}, [
     field("Nama lokasi", nama),
+    field("Plus Code / Link Google Maps (opsional)", lookup, {
+      hint: "Tempel plus code (mis. \"CRQ6+22 Mangkubumen, Kota Surakarta\") atau URL Google Maps lengkap yang memuat @lat,lng, lalu klik Terapkan — Alamat & Latitude/Longitude di bawah terisi otomatis.",
+    }),
+    h(".adm-btnrow", { style: "margin-top:-6px" }, [terapkanBtn]),
     field("Alamat", alamat),
     h(".row2", {}, [field("Latitude", lat), field("Longitude", lng)]),
     h(".adm-hint", {}, [
       cariBtn,
-      h("p", { text: "Tip: cari lokasinya, klik-kanan titik yang tepat di Google Maps, lalu salin koordinat yang muncul." }),
+      h("p", { text: "Link pendek (maps.app.goo.gl) tidak bisa dibaca otomatis — buka link-nya dulu, lalu tempel URL lengkap dari address bar. Atau: cari lokasinya, klik-kanan titik yang tepat di Google Maps, lalu salin koordinat yang muncul." }),
     ]),
     h(".row2", {}, [field("Slot Motor", capMotor), field("Slot Mobil", capCar)]),
     h(".row2", {}, [field("Tarif Motor/jam (Rp)", tarifMotor), field("Tarif Mobil/jam (Rp)", tarifMobil)]),

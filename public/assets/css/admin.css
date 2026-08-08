@@ -161,6 +161,10 @@ textarea.input{resize:vertical;font-family:inherit;min-height:84px;line-height:1
 .skel-admtab:nth-child(3){width:96px}
 .skel-admtab:nth-child(4){width:104px}
 .skel-admtab:nth-child(5){width:136px}
+/* Tab aktif sudah diketahui sejak boot (dari hash URL) — digambar padat
+   dengan warna tombol aktif sungguhan, bukan ikut shimmer abu-abu, supaya
+   langsung terlihat sedang berada di tab yang mana. */
+.skel-admtab.active{animation:none;background:linear-gradient(135deg,var(--blue-600),var(--cyan-500));opacity:.9}
 
 .skel-admstatus{height:70px;border-radius:var(--r-sm)}
 
@@ -202,6 +206,13 @@ textarea.input{resize:vertical;font-family:inherit;min-height:84px;line-height:1
 
 /* kerangka di dalam tab: tanpa padding ganda, .section sudah mengaturnya */
 .skel-admpart{display:block}
+
+/* mirip blok QR kustom di tab Export QRIS: textarea + baris tombol + pratinjau */
+.skel-admform{display:flex;flex-direction:column;gap:10px}
+.skel-admtextarea{height:84px;border-radius:14px}
+.skel-admbtnrow{display:flex;flex-wrap:wrap;gap:8px}
+.skel-admbtnrow .skel-btn{flex:1 1 140px;height:44px;border-radius:12px}
+.skel-admform .skel-qr{margin:2px auto 0}
 
 /* ---------- aksesibilitas ---------- */
 @media (prefers-reduced-motion:reduce){

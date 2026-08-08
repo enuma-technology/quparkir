@@ -66,6 +66,7 @@ Tunggu 1–2 menit. Netlify akan menampilkan progress lalu berubah jadi **"Publi
 
 > 💡 Alamat acak itu boleh diganti. Di **Site settings → Domain management → Options → Edit site name**, ganti jadi sesuatu yang lebih mudah diingat, misalnya `quparkir-pay`. Alamatnya jadi `https://quparkir-pay.netlify.app` — ini yang nanti dipakai sebagai `apiBase` di `config.js` (lihat `PAYMENT-SETUP.md` Langkah 6a).
 
+
 ---
 
 ## Langkah 2 — Simpan kunci rahasia di Netlify

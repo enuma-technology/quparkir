@@ -95,21 +95,43 @@ try {
   await page.waitForSelector("#tabbar:not([hidden])", { timeout: 20000 });
   ok("Role admin dibaca app dari Firestore (users/{uid}.role)");
 
-  // ---------- 3. Seeding lokasi dari Dashboard Admin ----------
-  await page.evaluate(() => (location.hash = "#/admin"));
-  await page.waitForSelector("text=Dashboard Admin", { timeout: 15000 });
-  // ensureSeed() otomatis jalan setelah admin login; kalau koleksi masih kosong
-  // pakai tombol manual di dashboard.
+  // ---------- 3. Seeding lokasi dari Panel Admin ----------
+  // Panel admin BERDIRI SENDIRI di admin.html (bukan rute di dalam SPA) —
+  // gerbangnya sandi statis (lihat admin-panel.js), terpisah dari role
+  // Firebase. Sesi Firebase "Admin Uji" (role=admin) tetap terbawa lintas
+  // halaman (origin sama), jadi tulis Firestore di sini tetap lolos rules.
+  await page.goto("http://127.0.0.1:5000/admin", { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".auth-card", { timeout: 20000 });
+  await page.fill("input[placeholder='admin']", "admin");
+  await page.fill("input[placeholder='Kata sandi']", "admin234156");
+  await page.click("button:has-text('Masuk')");
+  await page.waitForSelector(".admin-tabs", { timeout: 20000 });
+  await page.click(".admin-tabs button:has-text('Lokasi')");
+  await page.waitForSelector("h2:has-text('Lokasi Parkir')", { timeout: 10000 });
+  // ensureSeed() otomatis jalan (fire-and-forget) begitu SIAPA PUN login —
+  // baik sesi pelanggan di app.html maupun panel admin di sini — dan begitu
+  // koleksi berisi 1 dokumen saja, tombol "Muat 6 lokasi awal" langsung
+  // sembunyi (hanya tampil untuk koleksi yang BENAR-BENAR kosong). Kalau dua
+  // pemicu itu bersamaan menabrak koleksi yang baru diperiksa dalam kondisi
+  // sama-sama kosong, hasilnya bisa 1 dokumen "nyangkut" tanpa tombol untuk
+  // melanjutkan. Makanya di sini TIDAK hanya mengandalkan klik tombol —
+  // begitu ditemukan macet begini, panggil DB.locations.seed() langsung
+  // (fungsi yang sama yang dipanggil tombolnya) untuk memastikan progres.
   const tombol = page.locator("button:has-text('Muat 6 lokasi awal')");
   const locs = await waitFor(async () => {
     const l = await listDocs("locations");
     if (l.length >= 6) return l;
     if (await tombol.count()) await tombol.click().catch(() => {});
+    else await page.evaluate(async () => { const { DB } = await import("./js/data.js"); await DB.locations.seed(); }).catch(() => {});
     return null;
   }, "6 lokasi ter-seed ke Firestore", 45000);
   if (locs.length !== 6) throw new Error("locations = " + locs.length + ", harusnya 6");
   ok("Seeding kantong parkir → koleksi locations", locs.map(l => flat(l).name).join(", "));
   await page.screenshot({ path: SHOT + "/1-admin.png" });
+
+  // kembali ke aplikasi pelanggan untuk sisa alur (sesi Firebase tetap terbawa)
+  await page.goto(APP, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#tabbar:not([hidden])", { timeout: 20000 });
 
   // ---------- 4. Alur pelanggan biasa (BUKAN admin → rules diuji sungguhan) ----------
   await page.evaluate(() => (location.hash = "#/akun"));
@@ -174,6 +196,10 @@ try {
   // Anti double-parking dari UI
   await page.evaluate(() => (location.hash = "#/checkin"));
   await page.waitForSelector("#doCheckin");
+  // Kendaraan terpilih baru muncul setelah snapshot Firestore pertama tiba
+  // (async) — tanpa menunggu ini, klik terlalu cepat kena validasi "Pilih
+  // kendaraan" duluan, bukan pesan anti double-parking yang mau diuji.
+  await page.waitForSelector(".seg button.active", { timeout: 10000 });
   // bersihkan toast lama supaya yang dibaca benar-benar hasil klik ini
   await page.evaluate(() => { const t = document.querySelector("#toast"); t.className = "toast"; t.textContent = ""; });
   await page.click("#doCheckin");
@@ -245,11 +271,15 @@ try {
   if (!w) throw new Error("wallet tidak tersimpan di users/{uid}");
   ok("Top up QuPay → saldo tersimpan di users/{uid}.wallet", "Rp " + w);
 
-  // Guard peran: pelanggan dilarang membuka dashboard admin
+  // Tautan/bookmark lama #/admin diarahkan ke Panel Admin berdiri sendiri
+  // (admin.html) — lihat komentar redirect di app.js. Panel itu punya gerbang
+  // sandinya sendiri (per-tab, sengaja terpisah dari role Firebase — lihat
+  // catatan keamanan di admin-panel.js); yang benar-benar menolak tulisan
+  // data non-admin adalah Firestore Rules, sudah diuji tuntas di rules.mjs
+  // ("locations/promos/banners: pelanggan TIDAK bisa menulis").
   await page.evaluate(() => (location.hash = "#/admin"));
-  await page.waitForTimeout(1200);
-  if (await page.locator("text=Rekap Transaksi").count()) throw new Error("pelanggan bisa membuka Dashboard Admin!");
-  ok("Guard peran: pelanggan ditolak dari Dashboard Admin");
+  await page.waitForURL(/\/admin(\?|$)/, { timeout: 10000 });
+  ok("Tautan lama #/admin diarahkan ke Panel Admin (admin.html)");
 
 } catch (e) {
   bad("GAGAL", e.message);

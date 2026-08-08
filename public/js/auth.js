@@ -126,7 +126,7 @@ async function firebaseAuth() {
       if (!prof || Object.keys(patch).length)
         setDoc(doc(db, "users", u.uid), patch, { merge: true })
           .catch((e) => console.warn("Sinkron profil gagal:", e));
-      next = { uid: u.uid, name: nameOf(u), email: u.email, anon: u.isAnonymous, role };
+      next = { uid: u.uid, name: nameOf(u), email: u.email, photoURL: u.photoURL || null, anon: u.isAnonymous, role };
     }
     if (my !== seq) return;               // sudah ada perubahan status yang lebih baru
     cur = next;

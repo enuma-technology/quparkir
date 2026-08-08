@@ -9,8 +9,13 @@
 // tahu sejak sekarang apakah yang akan digambar itu gerbang masuk atau
 // dashboard, dan kerangkanya bisa langsung dicocokkan. Tanpa ini, pengguna
 // melihat kerangka dashboard lalu berkedip berganti kartu login.
+//
+// Tab aktif juga tersimpan di URL (mis. admin.html#lokasi) dan dibaca di
+// sini secara sinkron, jadi refresh di tab Lokasi menampilkan kerangka tab
+// Lokasi — bukan kerangka Ringkasan yang lalu melompat begitu admin-panel.js
+// selesai dimuat dan memasang tab yang benar.
 // ============================================================
-import { adminSkeletonNode } from "./skeleton.js";
+import { adminSkeletonNode, ADMIN_TABS } from "./skeleton.js";
 
 // dipakai bersama admin-panel.js supaya kuncinya tidak ditulis dua kali
 export const SESSION_KEY = "qp_admin_session_v1";
@@ -19,11 +24,18 @@ export const adminMasuk = () => {
   try { return sessionStorage.getItem(SESSION_KEY) === "1"; } catch { return false; }
 };
 
+// Hash tak dikenal/kosong (mis. tautan lama "admin.html" tanpa hash) → jatuh
+// ke tab pertama, bukan dianggap error.
+export function currentTab() {
+  const id = location.hash.slice(1);
+  return ADMIN_TABS.some(t => t.id === id) ? id : ADMIN_TABS[0].id;
+}
+
 const view = document.getElementById("view");
 if (view) {
   const masuk = adminMasuk();
   // dashboard memakai kolom lebar; gerbang tetap kolom ponsel berlatar gelap
   document.getElementById("app")?.classList.toggle("wide", masuk);
   view.classList.toggle("authView", !masuk);
-  view.replaceChildren(adminSkeletonNode(masuk ? "dashboard" : "gate"));
+  view.replaceChildren(adminSkeletonNode(masuk ? currentTab() : "gate"));
 }

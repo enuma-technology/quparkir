@@ -178,8 +178,21 @@ const admStats = (n = 4) => `<div class="skel-admstats">${many(n, () => box("ske
 // `aksi` = ada tautan "+ Tambah" di kanan judul
 const admHead = (aksi = false) => `<div class="skel-head">${line("w40")}${aksi ? box("skel-chip") : ""}</div>`;
 
-// kop tetap: topbar + strip tab (selalu sama di semua tab)
-const admChrome = () => `
+// Satu-satunya daftar tab — dipakai admin-panel.js (label + render) DAN
+// admin-boot.js/skeleton.js (id + urutan) supaya keduanya tidak bisa berbeda.
+export const ADMIN_TABS = [
+  { id: "ringkasan", label: "📊 Ringkasan" },
+  { id: "lokasi", label: "🅿️ Lokasi" },
+  { id: "promo", label: "🎁 Promo" },
+  { id: "banner", label: "📣 Banner" },
+  { id: "qris", label: "🧾 Export QRIS" },
+];
+
+// kop tetap: topbar + strip tab (selalu sama di semua tab). Tab yang aktif
+// digambar padat (bukan shimmer) sebagai pengganti class .active sungguhan —
+// sejak boot tab mana yang aktif sudah diketahui dari hash URL, jadi kerangka
+// bisa langsung menunjukkannya alih-alih menunggu JS memasang class itu.
+const admChrome = (activeId) => `
   <div class="admin-head">
     <div class="admin-topbar">
       <div class="adm-shell adm-bar">
@@ -188,7 +201,8 @@ const admChrome = () => `
       </div>
     </div>
     <div class="admin-tabwrap">
-      <nav class="admin-tabs">${many(5, () => box("skel skel-admtab"))}</nav>
+      <nav class="admin-tabs">${ADMIN_TABS.map(t =>
+        box("skel-admtab" + (t.id === activeId ? " active" : ""))).join("")}</nav>
     </div>
   </div>`;
 
@@ -212,23 +226,45 @@ export function adminPartNode(jenis, n) {
   return el;
 }
 
-// Kerangka layar penuh saat halaman pertama dibuka.
-//   "gate"      → kartu masuk (latar gelap, 2 field, tanpa tombol penyedia)
-//   "dashboard" → kop + strip status + Ringkasan (tab awal)
-export function adminSkeletonHTML(jenis) {
-  if (jenis === "gate") return auth(2, false);
-  // Tab awal adalah Ringkasan: statistik lalu dua daftar yang berdampingan
-  // mulai 1024px, persis seperti .adm-cols di renderRingkasan().
-  return `
-    ${admChrome()}
-    <div class="adm-shell adm-statuswrap">${box("skel skel-admstatus")}</div>
+// Konten (tanpa kop) untuk tiap tab — bentuknya meniru render*() masing-masing
+// di admin-panel.js. Dipakai sejak boot supaya refresh di tab mana pun
+// menampilkan kerangka TAB ITU, bukan selalu Ringkasan lalu melompat begitu
+// admin-panel.js selesai dimuat dan memasang tab yang benar.
+const ADMIN_CONTENT = {
+  // statistik lalu dua daftar yang berdampingan mulai 1024px (.adm-cols)
+  ringkasan: () => `
     <div class="adm-shell">
       <section class="skel-section">${admHead()}${admStats(4)}</section>
       <div class="skel-admcols">
         <section class="skel-section">${admHead()}${many(3, () => admItem())}</section>
         <section class="skel-section">${admHead()}${many(2, () => admItem())}</section>
       </div>
-    </div>`;
+    </div>`,
+  // judul + "+ Tambah" di kanan, baris keterangan, daftar CRUD
+  lokasi: () => `<div class="adm-shell"><section class="skel-section">${admHead(true)}${line("w75")}${many(3, () => admItem())}</section></div>`,
+  promo: () => `<div class="adm-shell"><section class="skel-section">${admHead(true)}${line("w75")}${many(3, () => admItem())}</section></div>`,
+  banner: () => `<div class="adm-shell"><section class="skel-section">${admHead(true)}${line("w75")}${many(2, () => admItem())}</section></div>`,
+  // grid QR per lokasi lalu blok QR kustom (textarea + tombol + pratinjau)
+  qris: () => `
+    <div class="adm-shell">
+      <section class="skel-section">${admHead()}${line("w75")}<div class="skel-admqrgrid">${many(3, () => admQr())}</div></section>
+      <section class="skel-section">${admHead()}${line("w75")}
+        <div class="skel-admform">${box("skel-admtextarea")}<div class="skel-admbtnrow">${box("skel-btn")}${box("skel-btn")}</div>${box("skel-qr")}</div>
+      </section>
+    </div>`,
+};
+
+// Kerangka layar penuh saat halaman pertama dibuka.
+//   "gate"        → kartu masuk (latar gelap, 2 field, tanpa tombol penyedia)
+//   id dari ADMIN_TABS → kop (dengan tab itu ditandai aktif) + strip status + isi tab itu
+export function adminSkeletonHTML(jenis) {
+  if (jenis === "gate") return auth(2, false);
+  const tabId = ADMIN_TABS.some(t => t.id === jenis) ? jenis : ADMIN_TABS[0].id;
+  const isi = (ADMIN_CONTENT[tabId] || ADMIN_CONTENT.ringkasan)();
+  return `
+    ${admChrome(tabId)}
+    <div class="adm-shell adm-statuswrap">${box("skel-admstatus")}</div>
+    ${isi}`;
 }
 
 export function adminSkeletonNode(jenis) {

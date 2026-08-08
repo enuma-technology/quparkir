@@ -7,6 +7,7 @@
     "test:rules": "node rules.mjs",
     "test:e2e": "node e2e.mjs",
     "test:skeleton": "node skeleton.mjs",
+    "test:admin-tab": "node admin-tab.mjs",
     "postinstall": "playwright install chromium"
   },
   "devDependencies": {

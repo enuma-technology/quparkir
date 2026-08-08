@@ -105,6 +105,7 @@ export default async function homePage(view) {
   const bannerWrap = h("div");           // pengumuman dari admin (opsional, tersembunyi bila kosong)
   const activeSlot = h("div");           // banner sesi aktif
   const promoWrap = h("section.section");
+  paintPromoSkeleton(promoWrap);         // judul "Promo" tampil segera; isi carousel menyusul via subscribe
   const nearby = h(".cards");            // kartu terdekat
   // points:null → badge tampil "—" sampai data sesi tiba (bukan "0" yang menyesatkan)
   const header = appHeader({ title: `Hi, ${u.name} 👋`, sub: "Mau parkir di mana hari ini?", points: null });
@@ -175,10 +176,28 @@ function paintBanners(wrap, banners) {
   ]))));
 }
 
+// Judul section "Promo" — dipakai baik saat kerangka (skeleton) maupun isi asli
+// sudah tiba, supaya teksnya tidak pernah hilang/berkedip di antara keduanya.
+const promoHead = (promos) => h(".head", {}, [h("h2", { text: "Promo" }), h("a", { onclick: () => promoModal(promos) }, "Lihat semua")]);
+
+// Kerangka carousel promo selama menunggu snapshot pertama dari server (mis.
+// Firestore, yang perlu bolak-balik jaringan). Judulnya tetap teks asli — hanya
+// baris promo & titik indikator yang berupa shimmer — supaya section tidak
+// pernah tampak kosong sesaat setelah skeleton halaman penuh dilepas router.
+function paintPromoSkeleton(wrap) {
+  wrap.innerHTML = "";
+  wrap.append(
+    promoHead(),
+    h(".skel-carousel", { "aria-hidden": "true" }, [h(".skel.skel-promo"), h(".skel.skel-promo")]),
+    h(".skel-dots", { "aria-hidden": "true" }, [h(".skel.skel-dot"), h(".skel.skel-dot"), h(".skel.skel-dot")]),
+  );
+}
+
 // Kartu carousel promo dibangun murni dari data — admin cukup isi tag/judul/
 // deskripsi, gaya kartu (varian "alt") berselang-seling otomatis per index.
 function paintPromos(wrap, promos) {
   wrap.innerHTML = "";
+  wrap.append(promoHead(promos));
   if (!promos.length) return;
   const dots = h(".dots");
   const car = h(".carousel", {}, promos.map((p, i) =>
@@ -189,5 +208,5 @@ function paintPromos(wrap, promos) {
     const i = Math.round(car.scrollLeft / (car.scrollWidth / promos.length));
     [...dots.children].forEach((d, n) => d.classList.toggle("on", n === Math.min(i, promos.length - 1)));
   });
-  wrap.append(h(".head", {}, [h("h2", { text: "Promo" }), h("a", { onclick: () => promoModal(promos) }, "Lihat semua")]), car, dots);
+  wrap.append(car, dots);
 }

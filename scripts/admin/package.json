@@ -1,0 +1,13 @@
+{
+  "name": "quparkir-admin-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Skrip sekali-jalan yang menulis ke Firestore lewat Firebase Admin SDK (server-side, melewati Security Rules) — untuk bootstrap data/role yang tidak bisa dilakukan klien biasa.",
+  "scripts": {
+    "seed:promos": "node seed-promos.mjs",
+    "set:admin": "node set-admin-role.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.0.0"
+  }
+}

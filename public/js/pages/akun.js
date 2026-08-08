@@ -13,6 +13,17 @@ const NOMINAL = [25000, 50000, 100000, 200000];
 const titel = (s) => (s || "").charAt(0).toUpperCase() + (s || "").slice(1);
 const providerLabel = (u) => PROVIDER[u.provider] || (u.anon ? "Tamu" : (u.email ? "Email" : "—"));
 
+// Avatar: foto profil Google jika ada (photoURL), gugur ke huruf inisial kalau gambar gagal dimuat.
+function avatar(u) {
+  const el = h(".acc-avatar", { text: (u.name || "U")[0].toUpperCase() });
+  if (u.photoURL) {
+    const img = h("img", { src: u.photoURL, alt: "", referrerpolicy: "no-referrer" });
+    img.addEventListener("error", () => img.remove(), { once: true });
+    el.append(img);
+  }
+  return el;
+}
+
 // Judul kelompok menu
 const group = (title, items) =>
   h("section.section", {}, [h(".head", {}, [h("h2", { text: title })]), ...[].concat(items)]);
@@ -109,7 +120,7 @@ export default async function akunPage(view) {
     appHeader({ title: "Akun", sub: "Pengaturan & profil", icons: false }),
 
     h(".card.acc-profile", {}, [
-      h(".acc-avatar", { text: (u.name || "U")[0].toUpperCase() }),
+      avatar(u),
       h(".who", {}, [
         h("h3", { text: u.name || "Pengguna QuParkir" }),
         h(".mail", { text: u.email || (u.anon ? "Akun tamu" : "—") }),
