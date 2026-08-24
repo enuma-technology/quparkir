@@ -12,6 +12,18 @@
 [build.environment]
   NODE_VERSION = "20"
 
+  # Pemindai rahasia Netlify menggagalkan build kalau nilai sebuah env var yang
+  # ditandai "secret" ditemukan di dalam repo. FB_PROJECT_ID ("quparkir") dan
+  # ALLOWED_ORIGIN (URL publik situs) BUKAN rahasia — keduanya muncul ratusan
+  # kali di repo secara sah, mulai dari .firebaserc sampai tiap tag <link> di
+  # HTML. Menandainya rahasia di dasbor membuat pemindai menemukan "temuan"
+  # yang semuanya wajar, lalu build mati.
+  #
+  # Yang BENAR-BENAR rahasia hanya FB_PRIVATE_KEY dan MIDTRANS_SERVER_KEY, dan
+  # keduanya sengaja TIDAK dicantumkan di sini — biar tetap dipindai. Kalau
+  # suatu saat salah satu dari keduanya bocor ke dalam repo, build harus mati.
+  SECRETS_SCAN_OMIT_KEYS = "FB_PROJECT_ID,ALLOWED_ORIGIN,FB_CLIENT_EMAIL,MIDTRANS_CLIENT_KEY,MIDTRANS_IS_PRODUCTION"
+
 # Jaring pengaman: sapu order 'pending' yang webhook-nya tidak pernah sampai.
 # Baru diaktifkan setelah reconcile.js ada — lihat PAYMENT-SETUP.md §5d.
 # [functions."reconcile"]
