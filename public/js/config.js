@@ -36,7 +36,26 @@ export const USE_EMULATOR = (() => {
 })();
 export const EMULATOR = { host: "127.0.0.1", firestorePort: 8080, authUrl: "http://127.0.0.1:9099" };
 
-// Konfigurasi pembayaran: isi midtransClientKey (Snap sandbox) + ubah provider
-// ke "midtrans" untuk gateway nyata; selama kosong, pembayaran QRIS berjalan
-// mode simulasi.
-export const paymentConfig = { provider: "simulasi", midtransClientKey: "" };
+// Konfigurasi pembayaran. Tiga mode, dipilih otomatis menurut isi berkas ini:
+//
+//   1. provider "midtrans" + midtransClientKey terisi → gateway nyata (butuh server)
+//   2. qrisStatic terisi                              → QRIS merchant asli, nominal
+//                                                        disisipkan di browser (tag 54)
+//   3. selain itu                                     → simulasi penuh, QR palsu
+//
+// qrisStatic: tempel STRING QRIS merchant (bukan gambar QR-nya). Cara ambil:
+// pindai QRIS cetakan Anda dengan pembaca QR apa pun, lalu salin teks hasilnya
+// — diawali "00020101" dan diakhiri "6304" + 4 karakter.
+//
+// ⚠️ Mode 2 membuat QR-nya nyata dan uang benar-benar masuk ke rekening
+// merchant, TAPI aplikasi tidak bisa tahu sendiri kapan lunas — QRIS statis
+// tidak membawa order_id. Konfirmasinya manual. Lihat docs/PAYMENT-GOBIZ.md §0.2.
+export const paymentConfig = {
+  provider: "simulasi",
+  midtransClientKey: "",
+  // QRIS merchant GoPay — Quparkir, COLOMADU (KARANGANYAR), NMID ID1026577085958.
+  // Statis & sah dipublikasikan (memang dicetak untuk umum); nominal disisipkan
+  // di browser oleh toDynamic() di qris.js.
+  qrisStatic:
+    "00020101021126610014COM.GO-JEK.WWW01189360091438437593560210G8437593560303UMI51440014ID.CO.QRIS.WWW0215ID10265770859580303UMI5204478953033605802ID5918Quparkir, COLOMADU6011KARANGANYAR61055717362140703A01110362163042F87",
+};

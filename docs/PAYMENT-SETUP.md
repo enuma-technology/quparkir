@@ -1,7 +1,10 @@
 # 🛠️ PANDUAN PASANG PEMBAYARAN — Midtrans + Netlify Functions
 
 **Pendamping:** [`PAYMENT.md`](./PAYMENT.md) — riset & alasan di balik pilihan ini.
+**Alternatif yang muncul belakangan:** [`PAYMENT-GOBIZ.md`](./PAYMENT-GOBIZ.md) — GoPay Merchant lewat GoBiz Open API. Langkah 1, 3, 4, dan seluruh `firestore.rules` di panduan ini **berlaku identik** di sana.
 **Baru pertama kali pakai Netlify?** Pakai [`NETLIFY-PEMULA.md`](./NETLIFY-PEMULA.md) dulu untuk Langkah 4 — versi klik-klik lewat website, tanpa CLI.
+**Proyek Netlify sudah berdiri tapi belum ada function?** [`NETLIFY-LANJUTAN.md`](./NETLIFY-LANJUTAN.md) — jembatan menuju Langkah 5 di sini.
+**⚠️ Langkah 1 sudah sebagian dikerjakan** dengan cara lain (tanpa server) pada 25 Agustus 2026 — lihat catatan di awal Langkah 1 sebelum menyalin apa pun.
 **Platform:** Netlify Functions (gratis, tanpa kartu kredit, `firebase-admin` jalan langsung).
 **Firebase:** tetap paket **Spark**. Tidak perlu Blaze, tidak ada yang dipindahkan.
 **Status kode di dokumen ini:** kerangka kerja yang belum pernah dijalankan. Wajib diuji di sandbox sebelum dipercaya.
@@ -77,6 +80,24 @@ quparkir/
 ---
 
 ## Langkah 1 — Tutup lubang keamanan (`firestore.rules`)
+
+> **⚠️ SEBAGIAN SUDAH DIKERJAKAN — jangan salin mentah-mentah.**
+>
+> Pada 25 Agustus 2026, tiga dari empat lubang di bawah sudah ditutup **tanpa
+> server sama sekali**, sudah ter-deploy, dan lulus 33 uji di
+> [`scripts/rules-test/`](../scripts/rules-test/README.md). Rules yang berlaku
+> sekarang berbeda dari versi "SESUDAH" di bawah:
+>
+> | Bagian | Keadaan sebenarnya |
+> |---|---|
+> | **1a** `wallet` | Ditutup dengan cara lain: pemilik hanya boleh *mengurangi*; menambah adalah hak petugas lewat koleksi `/topups` |
+> | **1b** `transactions` | Belum baca-saja. Klien masih menulis, tapi nominalnya dicocokkan ke sesi yang dirujuk |
+> | **1c** `sessions.amount` | Ditutup: rules menghitung sendiri batas bawah tarif dari `checkinAt` + jam server |
+> | **1d** koleksi `orders` | Belum ada — ini memang butuh server, kerjakan bersama Langkah 5 |
+>
+> Yang masih perlu dikerjakan dari Langkah 1 hanyalah **1d**, dan **1b** baru
+> bisa dijadikan baca-saja setelah `create-payment.js` jalan. Rinciannya di
+> [`NETLIFY-LANJUTAN.md` §8](./NETLIFY-LANJUTAN.md).
 
 **Kerjakan ini lebih dulu.** Tanpa ini, semua langkah berikutnya sia-sia: orang bisa mengisi saldo sendiri tanpa membayar.
 

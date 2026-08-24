@@ -1,4 +1,4 @@
-import { h, durasiLabel, toast } from "../util.js";
+import { h, durasiLabel, rupiah, fmtDate, toast } from "../util.js";
 import { DB } from "../data.js";
 import { Auth } from "../auth.js";
 import { pageHeader } from "../parts.js";
@@ -9,6 +9,8 @@ export default async function petugasPage(view) {
   const statEl = h(".stats");
   const listEl = h("div.pad");
   const preaderWrap = h("div", { id: "preaderWrap", style: "margin:0 0 8px" });
+  const topupEl = h("div.pad");
+  const topupHead = h("section.section", {}, [h(".head", {}, [h("h2", { text: "Konfirmasi Top Up" })])]);
   const ktaQr = h(".qrbox");
   renderQR(ktaQr, "QP-KTA:" + u.uid, 130);
 
@@ -26,6 +28,7 @@ export default async function petugasPage(view) {
       h("button.btn.ghost", { onclick: scanTicket }, "📷 Scan E-Ticket"), preaderWrap,
     ]),
     listEl,
+    topupHead, topupEl,
   );
 
   let active = []; // sessions aktif terakhir (untuk handler scan)
@@ -46,6 +49,37 @@ export default async function petugasPage(view) {
       });
     } catch (e) { preaderWrap.innerHTML = ""; toast(e.message, "err"); }
   }
+
+  // Permintaan top up. Pengguna sudah membayar lewat QRIS merchant, tapi QRIS
+  // statis tidak memberi tahu aplikasi kapan uang masuk — jadi petugaslah yang
+  // mencocokkan ke aplikasi merchant sebelum saldo bertambah. Persetujuan
+  // menaikkan saldo dalam satu transaksi (lihat DB.topups.approve).
+  const unsubTop = DB.topups.subscribePending((list) => {
+    topupEl.innerHTML = "";
+    if (!list.length) {
+      topupEl.append(h(".empty", {}, [h(".ic", { text: "💠" }), h("p", { text: "Tidak ada permintaan top up." })]));
+      return;
+    }
+    list.forEach(t => {
+      const setuju = h("button.btn.sm", {}, "Setujui");
+      const tolak = h("button.btn.sm.ghost", { style: "margin-left:6px" }, "Tolak");
+      const jalankan = async (fn, pesan) => {
+        setuju.disabled = tolak.disabled = true;   // cegah klik ganda menambah saldo dua kali
+        try { await fn(t.id, u.uid); toast(pesan, "ok"); }
+        catch (e) { toast(e.message || "Gagal memproses", "err"); setuju.disabled = tolak.disabled = false; }
+      };
+      setuju.onclick = () => jalankan(DB.topups.approve, "Top Up " + rupiah(t.amount) + " disetujui");
+      tolak.onclick = () => jalankan(DB.topups.reject, "Permintaan ditolak");
+      topupEl.append(h(".li", {}, [
+        h(".ic", { style: "background:rgba(59,130,246,.18)", text: "💠" }),
+        h("div", { style: "flex:1;min-width:0" }, [
+          h(".t", { text: rupiah(t.amount) + " · " + (t.name || t.uid.slice(0, 8)) }),
+          h(".s", { text: "QRIS · " + fmtDate(t.createdAt) }),
+        ]),
+        h("div", { style: "display:flex;align-items:center" }, [setuju, tolak]),
+      ]));
+    });
+  });
 
   let tick;
   const unsub = DB.sessions.subscribeAllActive((sessions) => {
@@ -73,5 +107,5 @@ export default async function petugasPage(view) {
     clearTimeout(tick); tick = setTimeout(function loop() { draw(); tick = setTimeout(loop, 5000); }, 5000);
   });
 
-  return () => { clearTimeout(tick); unsub && unsub(); stopScan && stopScan(); };
+  return () => { clearTimeout(tick); unsub && unsub(); unsubTop && unsubTop(); stopScan && stopScan(); };
 }

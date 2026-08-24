@@ -9,6 +9,7 @@ import { authShell, field, setError, clearError, busy, markAuthView } from "./pa
 import { initData, DB, MODE } from "./data.js";
 import { initAuth, Auth } from "./auth.js";
 import { renderQR } from "./qr.js";
+import { toDynamic, validateQris } from "./qris.js";
 import { adminPartNode, ADMIN_TABS } from "./skeleton.js";
 import { SESSION_KEY, currentTab } from "./admin-boot.js";
 import { resolveLocationInput } from "./geo-input.js";
@@ -614,7 +615,7 @@ function renderQris(root) {
     ]),
     h("section.section", {}, [
       h(".head", {}, [h("h2", { text: "QR Kustom / QRIS Statis" })]),
-      h("p.s", { style: "margin-bottom:10px", text: "Tempel string QRIS merchant (atau teks/tautan lain) untuk dijadikan QR yang bisa diunduh." }),
+      h("p.s", { style: "margin-bottom:10px", text: "Tempel string QRIS merchant (atau teks/tautan lain) untuk dijadikan QR yang bisa diunduh. Isi nominal untuk mengubah QRIS statis jadi dinamis — nominalnya terkunci di aplikasi pembayar." }),
       custom,
     ]),
   );
@@ -640,12 +641,40 @@ function renderQris(root) {
   });
 
   const txt = h("textarea.input", { rows: 3, placeholder: "Tempel string QRIS atau teks lain di sini…" });
+  const nom = h("input.input", { type: "number", min: "1", placeholder: "Nominal (opsional) — mis. 2000" });
+  const info = h("p.s", { style: "margin:8px 0" });
   const prevBox = h(".qrbox", { style: "min-height:196px" });
-  const genBtn = h("button.btn.sm", {
-    onclick: () => { const v = txt.value.trim(); if (!v) return toast("Isi teksnya dulu", "err"); renderQR(prevBox, v, 200); },
-  }, "Buat QR");
+
+  const buat = () => {
+    const v = txt.value.trim();
+    if (!v) return toast("Isi teksnya dulu", "err");
+    const jumlah = Number(nom.value);
+
+    // Tanpa nominal: perlakukan apa adanya — teks/tautan bebas, seperti semula
+    if (!jumlah) {
+      const cek = validateQris(v);
+      info.textContent = cek.ok
+        ? `QRIS ${cek.statis ? "statis" : "dinamis"} — ${cek.merchant}${cek.kota ? ", " + cek.kota : ""}. Isi nominal untuk menguncinya.`
+        : "";
+      return renderQR(prevBox, v, 200);
+    }
+
+    // Dengan nominal: wajib QRIS yang sah, karena hasilnya akan dipindai orang
+    try {
+      const dinamis = toDynamic(v, jumlah);
+      const cek = validateQris(dinamis);
+      renderQR(prevBox, dinamis, 200);
+      info.textContent = `✅ QRIS dinamis ${rupiah(jumlah)} — ${cek.merchant}${cek.kota ? ", " + cek.kota : ""}`;
+    } catch (e) {
+      info.textContent = "";
+      prevBox.innerHTML = "";
+      toast(e.message, "err");
+    }
+  };
+
+  const genBtn = h("button.btn.sm", { onclick: buat }, "Buat QR");
   const dlBtn = h("button.btn.sm.ghost", { onclick: () => unduhQR(prevBox, "qr-kustom.png") }, "⬇️ Unduh PNG");
-  custom.append(txt, h(".adm-btnrow", {}, [genBtn, dlBtn]), prevBox);
+  custom.append(txt, nom, h(".adm-btnrow", {}, [genBtn, dlBtn]), info, prevBox);
 
   return () => unsub && unsub();
 }

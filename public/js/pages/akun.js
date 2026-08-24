@@ -61,10 +61,21 @@ function topUpModal(u) {
     $("#modalHost").innerHTML = "";
     const ok = await payQRIS({ amount, title: "Top Up QuPay" });
     if (!ok) return toast("Top up dibatalkan", "err");
-    const cur = await Promise.resolve(DB.wallet.get(u.uid));
-    await DB.wallet.set(u.uid, cur + amount);
-    toast("Top up berhasil", "ok");
-    render();
+    // Saldo TIDAK ditambah di sini. QRIS statis tidak memberi tahu aplikasi
+    // kapan uang masuk, jadi menambah saldo atas dasar tombol "sudah bayar"
+    // sama dengan membagikan saldo gratis. Yang dicatat adalah PERMINTAAN;
+    // petugas mencocokkannya ke aplikasi merchant lalu menyetujui.
+    try {
+      await DB.topups.create(u.uid, { amount, name: u.name || "" });
+    } catch (e) {
+      return toast(e.message || "Gagal mengirim permintaan top up", "err");
+    }
+    modal("Menunggu Konfirmasi", h("div", { style: "text-align:center" }, [
+      h(".center", { style: "font-size:46px" }, "⏳"),
+      h(".big-amt", { style: "margin:6px 0 10px", text: rupiah(amount) }),
+      h("p.muted", { html: "<small>Permintaan top up sudah dikirim. Saldo bertambah setelah petugas mencocokkan pembayaran Anda di aplikasi merchant.</small>" }),
+      h("button.btn", { style: "margin-top:16px", onclick: () => { $("#modalHost").innerHTML = ""; render(); } }, "Mengerti"),
+    ]));
   };
 
   modal("Top Up QuPay", h("div", {}, [

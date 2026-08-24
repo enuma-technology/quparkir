@@ -3,19 +3,31 @@
 **Tanggal riset:** 8 Agustus 2026
 **Status:** riset & perencanaan — belum ada kode yang diimplementasikan
 **Panduan kerjanya:** [`PAYMENT-SETUP.md`](./PAYMENT-SETUP.md) — langkah demi langkah beserta kodenya
+**Pembanding:** [`PAYMENT-ALTERNATIF.md`](./PAYMENT-ALTERNATIF.md) — alternatif selain Midtrans (Duitku, Tripay, iPaymu, DOKU, penyedia QRIS saja, dan jalur Bank Jateng untuk retribusi daerah). **Menjawab pertanyaan terbuka di §6** soal kategori merchant/MDR.
+**⚠️ Koreksi:** [`PAYMENT-GOBIZ.md`](./PAYMENT-GOBIZ.md) (24 Agustus 2026) — **§1 di bawah tidak akurat.** GoPay Merchant ternyata punya Open API dengan QRIS dinamis + webhook. Baca koreksinya sebelum memakai §1 sebagai dasar keputusan.
 **Pertanyaan yang dijawab:** bagaimana QuParkir bisa benar-benar menerima pembayaran, dan bagaimana sistem tahu bahwa pembayaran itu berhasil.
 
 ---
 
-## 1. Temuan utama: "GoPay Merchant" bukan jalur untuk aplikasi ini
+## 1. ~~Temuan utama: "GoPay Merchant" bukan jalur untuk aplikasi ini~~ — DIKOREKSI
 
-GoPay Merchant (dulu GoBiz) ditujukan untuk transaksi **tatap muka** — QRIS statis di meja kasir, POS, GoFood. Untuk aplikasi web/mobile dengan tarif dinamis seperti QuParkir, jalurnya adalah **Midtrans**, yang satu grup dengan GoPay (GoTo) dan merupakan satu-satunya payment gateway yang memproses GoPay.
+> ⚠️ **Bagian ini keliru dan dipertahankan apa adanya sebagai jejak riset.** Koreksi lengkapnya ada di [`PAYMENT-GOBIZ.md`](./PAYMENT-GOBIZ.md) §0.1.
+>
+> **Yang salah:** GoBiz (payung GoPay Merchant) **punya Open API** dengan kategori *Payment Integration* — QRIS dinamis dengan nominal dari server, `order_id` milik kita, `qris_string` mentah untuk digambar sendiri, webhook `payment.transaction.settlement`, tanda tangan `X-Go-Signature` (HMAC-SHA256), header `Idempotency-Key`, dan endpoint cek status. Kemampuannya setara dengan yang dibutuhkan QuParkir.
+>
+> **Yang tetap benar:** QRIS **statis** memang tidak bisa dipakai untuk rekonsiliasi otomatis — tidak membawa `order_id`, jadi pembayaran tidak bisa dihubungkan ke sesi parkir. Alasan itulah yang membuat kesimpulan lama terlihat masuk akal, tapi ia berlaku untuk QRIS statis, bukan untuk GoPay Merchant sebagai jalur.
+>
+> **Yang belum pasti:** apakah merchant GoPay Merchant non-GoFood bisa mendaftar mandiri di GoBiz Developer Portal. Cek 10 menit di [`PAYMENT-GOBIZ.md`](./PAYMENT-GOBIZ.md) §0.3 menjawabnya.
+>
+> **Dampak ke sisa dokumen ini:** tidak ada. §2 (penghalang arsitektur), §4 (lubang keamanan), §5 (alur & webhook), dan §7 (urutan pengerjaan) berlaku identik untuk gateway mana pun, GoBiz termasuk.
 
-Akun keduanya terhubung — email dan nomor telepon usaha tidak bisa didaftarkan dua kali di Midtrans/GoBiz/GoFood. Jadi:
+Teks aslinya:
 
-> Mendaftar **Midtrans** tetap memberi akses GoPay, plus QRIS, Virtual Account, dan kartu sekaligus. Tidak perlu mendaftar GoPay Merchant secara terpisah.
+> GoPay Merchant (dulu GoBiz) ditujukan untuk transaksi **tatap muka** — QRIS statis di meja kasir, POS, GoFood. Untuk aplikasi web/mobile dengan tarif dinamis seperti QuParkir, jalurnya adalah **Midtrans**, yang satu grup dengan GoPay (GoTo) dan merupakan satu-satunya payment gateway yang memproses GoPay.
+>
+> Akun keduanya terhubung — email dan nomor telepon usaha tidak bisa didaftarkan dua kali di Midtrans/GoBiz/GoFood. Jadi mendaftar **Midtrans** tetap memberi akses GoPay, plus QRIS, Virtual Account, dan kartu sekaligus.
 
-Kalau kelak QuParkir punya loket fisik, GoPay Merchant bisa dipakai berdampingan — tapi bukan untuk pembayaran di dalam aplikasi.
+Yang masih berlaku dari paragraf di atas: Midtrans tetap **satu-satunya jalur ke GoPay lewat popup/deeplink Gojek**, dan tetap memberi VA + kartu yang tidak ada di GoBiz. Kalau QuParkir cukup dengan QRIS saja — dan untuk parkir memang cukup — GoBiz kini jadi kandidat yang sah, dengan keunggulan tidak perlu verifikasi merchant baru.
 
 ---
 

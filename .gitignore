@@ -26,3 +26,8 @@ Thumbs.db
 
 # Uji E2E (scripts/test) — tangkapan layar lokal
 scripts/test/.test-shots/
+
+# Tangkapan layar kerja (dasbor Netlify/Firebase/Midtrans). Repo ini PUBLIK —
+# tangkapan layar dasbor sering memuat kunci, ID proyek, atau alamat surel
+# tanpa disadari. Simpan lokal saja.
+SS/

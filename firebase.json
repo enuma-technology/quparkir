@@ -26,12 +26,27 @@
         ]
       },
       {
-        "source": "**/*.html",
+        "_comment": "Header keamanan dipasang di '**', bukan '**/*.html'. Dengan cleanUrls:true, URL yang benar-benar dilayani adalah '/', '/privasi', '/app' — '/index.html' malah 301 ke '/'. Pola '**/*.html' karena itu TIDAK PERNAH cocok dengan satu permintaan pun di produksi, sehingga nosniff/Referrer-Policy/anti-framing diam-diam tidak aktif. Keempat header ini aman dipasang ke semua respons.",
+        "source": "**",
         "headers": [
-          { "key": "Cache-Control", "value": "no-cache" },
           { "key": "X-Content-Type-Options", "value": "nosniff" },
-          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+          { "key": "X-Frame-Options", "value": "DENY" },
+          { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'" }
         ]
+      },
+      {
+        "_comment": "Cache-Control dokumen tidak bisa ikut '**' (aset statis justru boleh di-cache), jadi rutenya disebut eksplisit: root, tiap clean URL, dan pola .html untuk akses langsung. Tanpa ini beranda dilayani max-age=3600 — penumpukan cache yang justru ingin dicegah.",
+        "source": "/",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "source": "/@(privasi|syarat|refund|app|admin|404)",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "source": "**/*.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       },
       {
         "source": "/sw.js",

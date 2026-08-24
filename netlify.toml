@@ -1,0 +1,18 @@
+# ============================================================
+# Netlify — situs statis + function pembayaran.
+#
+# Tanpa 'command': proyek ini vanilla ES modules, tidak ada build step.
+# Pengaturan di berkas ini MENANG atas pengaturan di dasbor Netlify, supaya
+# konfigurasinya tercatat di repo dan bukan hanya di satu tab peramban.
+# ============================================================
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Jaring pengaman: sapu order 'pending' yang webhook-nya tidak pernah sampai.
+# Baru diaktifkan setelah reconcile.js ada — lihat PAYMENT-SETUP.md §5d.
+# [functions."reconcile"]
+#   schedule = "@hourly"

@@ -1,6 +1,8 @@
 // ============================================================
 // QuParkir — Company Profile (landing) interactions
-// Vanilla JS, tanpa dependensi eksternal. Aman untuk CSP 'self'.
+// Vanilla JS. Satu-satunya pustaka luar adalah Leaflet untuk peta alamat di
+// footer (§7), dan itu pun di-vendor lokal di js/vendor/leaflet/ — jadi
+// script-src tetap cukup 'self', tanpa CDN.
 // ============================================================
 (function () {
   "use strict";
@@ -174,4 +176,80 @@
   // ---- 6) Tahun berjalan di footer ----------------------------------------
   var yr = $("#year");
   if (yr) yr.textContent = new Date().getFullYear();
+
+  // ---- 7) Peta alamat di footer (Leaflet + ubin OpenStreetMap) -------------
+  // Sengaja BUKAN iframe Google Maps Embed. Embed itu memuat rantai skripnya
+  // sendiri (maps.googleapis.com, maps.gstatic.com) dari dalam iframe, dan
+  // rantai itu gagal dengan "Permission was denied ... local address space"
+  // saat halaman disajikan dari alamat lokal atau saat ada ekstensi peramban
+  // yang mengalihkan request Google. Akibatnya kotak peta diam kosong, dan
+  // tidak ada yang bisa diperbaiki dari sisi kita — semuanya terjadi di dalam
+  // dokumen milik Google.
+  //
+  // Leaflet di-vendor ke js/vendor/leaflet/ (bukan CDN) supaya script-src
+  // tetap 'self'. Satu-satunya request keluar adalah ubin peta OSM berupa
+  // <img> biasa dari dokumen kita sendiri — jalur yang jauh lebih pendek dan
+  // tidak melibatkan skrip lintas-origin sama sekali. Peta di aplikasi
+  // (js/map.js) memakai tumpukan yang sama, jadi ini juga konsisten.
+  var mapEl = $("#footMap");
+
+  function mapFailed() {
+    mapEl.innerHTML = '<p class="map-fallback">Peta tidak dapat dimuat. ' +
+      '<a href="https://maps.app.goo.gl/nmrpRLwFGGMMXayw6" target="_blank" rel="noopener noreferrer">' +
+      'Buka di Google Maps</a>.</p>';
+  }
+
+  function drawFootMap() {
+    var lat = parseFloat(mapEl.getAttribute("data-lat"));
+    var lng = parseFloat(mapEl.getAttribute("data-lng"));
+    var zoom = parseInt(mapEl.getAttribute("data-zoom") || "16", 10);
+    if (isNaN(lat) || isNaN(lng)) { mapFailed(); return; }
+
+    mapEl.innerHTML = "";                 // buang teks "Memuat peta…"
+    mapEl.removeAttribute("role");        // kini peta interaktif, bukan gambar statis
+
+    var map = L.map(mapEl, {
+      center: [lat, lng], zoom: zoom,
+      zoomControl: true, attributionControl: true,
+      // Scroll-zoom dimatikan: peta ini duduk di footer, jadi menggulir
+      // halaman ke bawah tidak boleh malah men-zoom peta.
+      scrollWheelZoom: false
+    });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+    }).addTo(map);
+    L.marker([lat, lng]).addTo(map)
+      .bindPopup("<b>QuParkir</b><br>Desa Tohudan, Kec. Colomadu");
+
+    // Kotaknya memakai aspect-ratio; ukuran finalnya bisa baru pasti setelah
+    // layout footer selesai. invalidateSize mencegah ubin terpotong.
+    setTimeout(function () { map.invalidateSize(); }, 200);
+  }
+
+  function initFootMap() {
+    if (window.L) { drawFootMap(); return; }
+    var s = document.createElement("script");
+    s.src = "js/vendor/leaflet/leaflet.js";
+    s.onload = drawFootMap;
+    s.onerror = mapFailed;
+    document.head.append(s);
+  }
+
+  if (mapEl) {
+    // Ditunda sampai footer mendekat: Leaflet ~147 KB dan ubin peta tidak
+    // perlu diunduh oleh pengunjung yang tak pernah menggulir sampai bawah.
+    if ("IntersectionObserver" in window) {
+      var mio = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (!en.isIntersecting) return;
+          mio.unobserve(en.target);
+          initFootMap();
+        });
+      }, { rootMargin: "300px 0px" });
+      mio.observe(mapEl);
+    } else {
+      initFootMap();
+    }
+  }
 })();

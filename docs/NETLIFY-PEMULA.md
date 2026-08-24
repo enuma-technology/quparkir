@@ -120,6 +120,12 @@ Kalau tab Functions kosong padahal deploy sukses, kemungkinan besar **Functions 
 
 ## Langkah 4 — Setelah ini
 
+> **Proyek Netlify Anda sudah jadi?** Lanjutkan ke
+> [`NETLIFY-LANJUTAN.md`](./NETLIFY-LANJUTAN.md) — panduan itu berangkat dari
+> keadaan "proyek sudah ada tapi belum punya satu pun function", termasuk
+> anggaran kredit dan cara membuktikan pipa function jalan sebelum menyentuh
+> uang.
+
 Setelah tiga langkah di atas selesai (repo tersambung, kunci tersimpan, fungsi ter-deploy), lanjutkan ke `PAYMENT-SETUP.md` mulai dari:
 
 - **Langkah 6** — ubah kode di `public/js/` supaya aplikasi memanggil fungsi-fungsi ini

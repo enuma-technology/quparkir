@@ -40,7 +40,7 @@ function demoBackend() {
     banners: [],
     vehicles: {}, sessions: [], transactions: [], officers: [
       { id: "ofc-1", name: "Budi Santoso", code: "PTG-001", locationId: "loc-square", active: true },
-    ], profiles: {}, wallet: {},
+    ], profiles: {}, wallet: {}, topups: [],
   };
   // Data lama di localStorage tidak ikut ter-seed ulang. Segarkan hanya field
   // geografis dari SEED agar koreksi koordinat sampai ke user lama tanpa
@@ -95,6 +95,32 @@ function demoBackend() {
     officers: { subscribe: (cb) => sub(x => x.officers, cb) },
     profile: { get: (u) => s.profiles[u] || null, set: (u, p) => { s.profiles[u] = { ...s.profiles[u], ...p }; emit(); } },
     wallet: { get: (u) => s.wallet[u] ?? 25000, set: (u, v) => { s.wallet[u] = v; emit(); } },
+    // Top up TIDAK menambah saldo sendiri — ia membuat permintaan yang harus
+    // dikonfirmasi petugas. Lihat firestore.rules: pemilik hanya boleh
+    // MENGURANGI users.wallet, menambah adalah hak petugas.
+    topups: {
+      create: (u, { amount, name }) => {
+        const t = { id: randId(), uid: u, name: name || "", amount, method: "qris",
+                    status: "pending", createdAt: Date.now() };
+        s.topups.push(t); emit(); return t;
+      },
+      subscribePending: (cb) => sub(x => (x.topups || []).filter(t => t.status === "pending")
+        .sort((a, b) => b.createdAt - a.createdAt), cb),
+      approve: async (id, officerId) => {
+        const t = (s.topups || []).find(x => x.id === id);
+        if (!t) throw new Error("Permintaan top up tidak ditemukan.");
+        if (t.status !== "pending") throw new Error("Permintaan ini sudah diproses.");
+        t.status = "approved"; t.handledBy = officerId; t.handledAt = Date.now();
+        s.wallet[t.uid] = (s.wallet[t.uid] ?? 25000) + t.amount;
+        emit();
+      },
+      reject: async (id, officerId) => {
+        const t = (s.topups || []).find(x => x.id === id);
+        if (!t) throw new Error("Permintaan top up tidak ditemukan.");
+        if (t.status !== "pending") throw new Error("Permintaan ini sudah diproses.");
+        t.status = "rejected"; t.handledBy = officerId; t.handledAt = Date.now(); emit();
+      },
+    },
     async ensureSeed() { /* demo sudah ter-seed di constructor */ },
 
     async checkin(u, { vehicle, locationId }) {
@@ -140,7 +166,7 @@ async function firebaseBackend() {
     fs.connectFirestoreEmulator(db, EMULATOR.host, EMULATOR.firestorePort);
   }
   const { collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
-    onSnapshot, query, where, orderBy, runTransaction, serverTimestamp } = fs;
+    onSnapshot, query, where, orderBy, runTransaction, serverTimestamp, increment } = fs;
 
   const colArr = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -219,6 +245,28 @@ async function firebaseBackend() {
     officers: { subscribe: (cb) => watch(collection(db, "officers"), cb, colArr, "officers") },
     profile: { get: async (u) => (await getDoc(doc(db, "users", u))).data() || null, set: (u, p) => setDoc(doc(db, "users", u), p, { merge: true }) },
     wallet: { get: async (u) => (await getDoc(doc(db, "users", u))).data()?.wallet ?? 25000, set: (u, v) => setDoc(doc(db, "users", u), { wallet: v }, { merge: true }) },
+    topups: {
+      create: (u, { amount, name }) => addDoc(collection(db, "topups"), {
+        uid: u, name: name || "", amount, method: "qris", status: "pending", createdAt: Date.now() }),
+      // Tanpa orderBy supaya tidak menuntut composite index — urut di klien.
+      subscribePending: (cb) => watch(query(collection(db, "topups"), where("status", "==", "pending")),
+        cb, s => colArr(s).sort((a, b) => b.createdAt - a.createdAt), "topups"),
+      // Satu transaksi: status permintaan & saldo pengguna berubah bersama,
+      // supaya tidak pernah ada top up yang disetujui tanpa saldo bertambah.
+      approve: (id, officerId) => runTransaction(db, async (tx) => {
+        const ref = doc(db, "topups", id);
+        const t = (await tx.get(ref)).data();
+        if (!t) throw new Error("Permintaan top up tidak ditemukan.");
+        if (t.status !== "pending") throw new Error("Permintaan ini sudah diproses.");
+        // increment() dan BUKAN baca-lalu-tulis: petugas tidak punya izin baca
+        // users/{uid} (profil pelanggan tertutup), dan increment juga kebal
+        // terhadap perubahan saldo yang terjadi bersamaan.
+        tx.update(doc(db, "users", t.uid), { wallet: increment(t.amount) });
+        tx.update(ref, { status: "approved", handledBy: officerId, handledAt: Date.now() });
+      }),
+      reject: (id, officerId) => updateDoc(doc(db, "topups", id),
+        { status: "rejected", handledBy: officerId, handledAt: Date.now() }),
+    },
 
     async checkin(u, { vehicle, locationId }) {
       // pre-check cepat (fast fail); jaminan sesungguhnya di transaksi bawah

@@ -22,8 +22,39 @@ service cloud.firestore {
     function isAdmin() { return isSignedIn() && roleOf(uid()) == 'admin'; }
     function isPetugas() { return isSignedIn() && roleOf(uid()) in ['petugas', 'admin']; }
 
-    // Profil: pemilik; 'role' TIDAK boleh ditulis klien (anti privilege-escalation).
-    // 'wallet' boleh (prototipe; server-side wallet = fase Cloud Functions) tapi wajib angka >= 0.
+    // ---------- Tarif: divalidasi di server, bukan dipercaya dari browser ----------
+    //
+    // hitungTarif() di util.js: jam = max(1, ceil(ms/3.6e6));
+    //   motor = 2000 + (jam-1)*1000 ; mobil = 3000 + (jam-1)*2000
+    //
+    // Rules tidak punya pembagian pecahan yang aman (int/int dibulatkan ke
+    // bawah) — jadi pertidaksamaannya dibalik jadi PERKALIAN saja. Turunan:
+    //   amount >= 2000 + (jam-1)*1000  ⟺  (amount-1000) * 3600 >= ms   [motor]
+    //   amount >= 3000 + (jam-1)*2000  ⟺  (amount-1000) * 1800 >= ms   [mobil]
+    // Uji batas motor: 1 jam pas → (2000-1000)*3600 = 3.600.000 = ms ✔
+    //                  lewat 1 ms → ditolak, harus naik ke 3000 ✔
+    //
+    // TOLERANSI 2 menit: jam pengguna dan jam server tidak identik, dan ada
+    // jeda antara UI menghitung tarif dengan Firestore mengevaluasi rule.
+    // Tanpa ini, checkout yang jatuh persis di pergantian jam bisa ditolak.
+    function msParkir(checkinAt) {
+      return request.time.toMillis() - checkinAt - 120000;
+    }
+    function tarifCukup(type, amount, checkinAt) {
+      return amount is number
+        && amount >= (type == 'mobil' ? 3000 : 2000)
+        && (amount - 1000) * (type == 'mobil' ? 1800 : 3600) >= msParkir(checkinAt);
+    }
+
+    // Profil.
+    //   role   : TIDAK pernah boleh ditulis klien (anti privilege-escalation).
+    //   wallet : pemilik hanya boleh MENGURANGI (membayar). Menambah saldo
+    //            adalah top up, dan top up wajib lewat konfirmasi petugas —
+    //            lihat koleksi /topups. Tanpa aturan ini siapa pun bisa
+    //            menyetel saldonya sendiri lewat console browser.
+    // Default 25000 dipakai saat field 'wallet' belum ada, mengikuti
+    // DB.wallet.get() di data.js (`?? 25000`) — kalau tidak sama, saldo awal
+    // akan tampak 25000 di UI tapi dianggap 0 oleh rules.
     match /users/{u} {
       allow read: if isSignedIn() && uid() == u;
       allow create: if isSignedIn() && uid() == u
@@ -32,8 +63,22 @@ service cloud.firestore {
             || (request.resource.data.wallet is number && request.resource.data.wallet >= 0));
       allow update: if isSignedIn() && uid() == u
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
-        && (!('wallet' in request.resource.data)
-            || (request.resource.data.wallet is number && request.resource.data.wallet >= 0));
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['wallet'])
+            || (request.resource.data.wallet is number
+                && request.resource.data.wallet >= 0
+                && request.resource.data.wallet <= resource.data.get('wallet', 25000)));
+      // Petugas: HANYA menambah saldo (menyetujui top up), tanpa menyentuh
+      // field lain milik pengguna. Petugas TIDAK diberi izin baca dokumen ini
+      // — profil pelanggan tetap tertutup — jadi DB.topups.approve memakai
+      // increment(), bukan baca-lalu-tulis.
+      // Default 0 (bukan 25000) khusus di sini: increment() atas dokumen yang
+      // belum punya field 'wallet' menghasilkan angka = nominal top up, dan
+      // dengan default 25000 top up di bawah 25.000 akan tertolak. Arah
+      // amannya tetap terjaga: klausa ini hanya mencegah petugas MENGURANGI.
+      allow update: if isPetugas()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['wallet'])
+        && request.resource.data.wallet is number
+        && request.resource.data.wallet >= resource.data.get('wallet', 0);
       match /vehicles/{v} {
         allow read, write: if isSignedIn() && uid() == u;
       }
@@ -60,21 +105,54 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.uid == uid()
                     && request.resource.data.status == 'active'
                     && request.resource.data.verified == false;
-      // Pemilik: hanya field checkout — TIDAK bisa self-verify.
+      // Pemilik: hanya field checkout — TIDAK bisa self-verify, dan nominalnya
+      // wajib menutupi lama parkir menurut jam server (lihat tarifCukup).
       allow update: if isSignedIn() && resource.data.uid == uid()
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['status', 'checkoutAt', 'amount', 'method']);
+             .hasOnly(['status', 'checkoutAt', 'amount', 'method'])
+        && request.resource.data.status == 'done'
+        && request.resource.data.method in ['qupay', 'qris']
+        && tarifCukup(resource.data.vehicle.type, request.resource.data.amount, resource.data.checkinAt);
       // Petugas: hanya verifikasi.
       allow update: if isPetugas()
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['verified', 'verifiedBy']);
     }
 
+    // Catatan transaksi. amount TIDAK dipercaya apa adanya: dicocokkan ke sesi
+    // yang dirujuk memakai checkinAt & jenis kendaraan yang sudah tersimpan
+    // (data lama, bukan data yang sedang ditulis) — jadi tetap sah dievaluasi
+    // di tengah runTransaction() checkout.
     match /transactions/{id} {
       allow read: if isSignedIn() && (resource.data.uid == uid() || isAdmin());
       allow create: if isSignedIn() && request.resource.data.uid == uid()
-        && request.resource.data.amount is number && request.resource.data.amount > 0
-        && request.resource.data.method in ['qupay', 'qris'];
+        && request.resource.data.method in ['qupay', 'qris']
+        && request.resource.data.sessionId is string
+        && exists(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId))
+        && get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.uid == uid()
+        && tarifCukup(
+             get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.vehicle.type,
+             request.resource.data.amount,
+             get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.checkinAt);
+    }
+
+    // Permintaan top up QuPay. Pengguna membayar lewat QRIS merchant, lalu
+    // mencatat permintaannya di sini; petugas mencocokkan ke aplikasi merchant
+    // dan menyetujui. Saldo baru bertambah pada langkah persetujuan itu —
+    // pengguna tidak pernah bisa menambah saldonya sendiri.
+    match /topups/{id} {
+      allow read: if isSignedIn() && (resource.data.uid == uid() || isPetugas());
+      allow create: if isSignedIn() && request.resource.data.uid == uid()
+        && request.resource.data.amount is number
+        && request.resource.data.amount >= 10000
+        && request.resource.data.amount <= 1000000
+        && request.resource.data.status == 'pending'
+        && request.resource.data.method == 'qris';
+      allow update: if isPetugas()
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'handledBy', 'handledAt'])
+        && request.resource.data.status in ['approved', 'rejected'];
     }
 
     // Petugas

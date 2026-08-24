@@ -4,6 +4,7 @@
 // ============================================================
 import { h, $, rupiah, modal, toast } from "./util.js";
 import { renderQR } from "./qr.js";
+import { toDynamic } from "./qris.js";
 import { paymentConfig } from "./config.js";
 
 // Modal pilih metode. Resolve 'qupay' | 'qris' | null (batal via backdrop).
@@ -32,7 +33,45 @@ export function choosePayment({ amount, balance }) {
 export async function payQRIS({ amount, title = "Pembayaran QRIS" } = {}) {
   if (paymentConfig.provider === "midtrans" && paymentConfig.midtransClientKey)
     return payMidtrans({ amount, title });
+  if (paymentConfig.qrisStatic) return qrisMerchant({ amount, title });
   return simulasiQRIS({ amount, title });
+}
+
+// QRIS merchant asli: string statis diubah jadi dinamis di browser (tag 54 +
+// CRC16 baru), sehingga nominalnya terkunci di aplikasi pembayar dan tidak
+// perlu diketik manual.
+//
+// ⚠️ Batasnya harus jujur: QRIS statis tidak membawa order_id, jadi aplikasi
+// TIDAK bisa tahu sendiri uangnya sudah masuk. Tombol konfirmasi di bawah
+// adalah pernyataan pengguna, bukan bukti pembayaran — petugas tetap wajib
+// mencocokkan ke aplikasi merchant. Untuk rekonsiliasi otomatis dibutuhkan
+// QRIS dinamis terbitan PJP + webhook; lihat docs/PAYMENT-GOBIZ.md.
+function qrisMerchant({ amount, title }) {
+  let payload;
+  try {
+    payload = toDynamic(paymentConfig.qrisStatic, amount);
+  } catch (e) {
+    // String QRIS salah salin — jangan tampilkan QR yang pasti ditolak pemindai
+    console.error("QRIS statis tidak bisa dipakai:", e);
+    toast("QRIS merchant belum benar — memakai mode simulasi.", "err");
+    return simulasiQRIS({ amount, title });
+  }
+
+  return new Promise((resolve) => {
+    const qrEl = h(".qrbox");
+    renderQR(qrEl, payload, 220);
+    const body = h("div", { style: "text-align:center" }, [
+      h(".big-amt", { style: "margin:4px 0 12px", text: rupiah(amount) }),
+      qrEl,
+      h("p.muted", { style: "margin-top:8px",
+        html: "<small>Pindai dengan GoPay, DANA, OVO, ShopeePay, atau m-banking apa pun.<br>Nominal sudah terkunci — periksa angkanya sebelum menekan bayar.</small>" }),
+      h("button.btn", { style: "margin-top:14px", onclick: () => { $("#modalHost").innerHTML = ""; resolve(true); } },
+        "✅ Saya sudah bayar"),
+      h("p.muted", { style: "margin-top:6px",
+        html: "<small>Petugas mencocokkan pembayaran di aplikasi merchant.</small>" }),
+    ]);
+    modal(title, body).then(() => resolve(false));
+  });
 }
 
 // STUB integrasi Midtrans Snap (sandbox). Langkah integrasi nyata:

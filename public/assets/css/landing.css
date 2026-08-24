@@ -416,13 +416,54 @@ h2.h2{font-size:clamp(1.7rem,3.6vw,2.6rem);line-height:1.15;font-weight:900;lett
 .legal .contact-box li{margin-bottom:8px;color:var(--ls-ink-soft)}
 /* ---------- footer ---------- */
 .footer{background:var(--ls-navy);color:#a9bee6;padding:64px 0 28px}
-.foot-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1.2fr;gap:34px}
+/* Kolom terakhir (Kontak & Alamat) dilebarkan dari 1.2fr → 1.5fr karena kini
+   memuat kotak peta, bukan cuma daftar tautan. */
+.foot-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1.5fr;gap:34px}
 .footer .brand{color:#fff;margin-bottom:14px}
 .footer p{font-size:.9rem;max-width:38ch}
 .footer h4{color:#fff;font-size:.82rem;font-weight:900;letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px}
 .footer li{margin-bottom:9px}
 .footer a{color:#a9bee6;font-size:.92rem;transition:color .18s}
 .footer a:hover{color:#7dd3fc}
+
+/* Kontak & alamat di footer.
+   Alamat ditulis dengan <address> + microdata schema.org, bukan JSON-LD
+   inline: CSP halaman ini melarang script inline, jadi microdata satu-satunya
+   cara memberi mesin pencari alamat terstruktur tanpa melonggarkan
+   script-src.
+
+   Tiap <li> dibuat flex supaya ikon menjadi kolom sendiri: alamat dua baris
+   tetap sejajar rata di bawah baris pertamanya, tidak jatuh ke tepi kiri di
+   bawah ikon. Ini juga membuat ikon 📍 📞 ✉️ 🕗 lurus satu sama lain. */
+.foot-contact ul{list-style:none;padding:0;margin:0 0 16px}
+.foot-contact li{display:flex;gap:7px;align-items:flex-start;font-size:.92rem;line-height:1.6}
+.foot-contact address{display:block;font-style:normal;margin:0}
+
+/* Kotak peta (Leaflet + ubin OpenStreetMap; Leaflet di-vendor lokal di
+   js/vendor/leaflet/). Rasio dijaga aspect-ratio, bukan tinggi tetap, supaya
+   peta ikut mengecil rapi saat kolom footer menyempit — sekaligus memberi
+   Leaflet tinggi yang pasti sejak awal, syarat agar ubinnya terhitung benar.
+
+   `isolation:isolate` + z-index:0 penting: Leaflet memakai z-index sampai
+   1000 untuk pane dan kontrolnya. Tanpa stacking context sendiri, kontrol
+   zoom peta akan menimpa navbar fixed (z-index:60) saat footer tergulir ke
+   bawahnya. Ini mengurung seluruh z-index Leaflet di dalam kotak. */
+.map-box{
+  position:relative;overflow:hidden;border-radius:14px;isolation:isolate;z-index:0;
+  border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);
+  aspect-ratio:16/10;min-height:160px;
+}
+.map-box.leaflet-container{background:#0f1c45}
+/* Atribusi OSM wajib tampil, tapi dibuat menyatu dengan footer gelap. */
+.map-box .leaflet-control-attribution{background:rgba(8,18,58,.78);color:#c9dcff;font-size:.68rem}
+.map-box .leaflet-control-attribution a{color:#7dd3fc;font-size:.68rem}
+.map-fallback{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  text-align:center;padding:18px;margin:0;font-size:.86rem;color:#a9bee6;
+}
+.map-links{margin:10px 0 0;font-size:.86rem;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.map-links a{font-weight:700;text-decoration:underline}
+.map-links span{opacity:.5}
 .foot-bottom{
   margin-top:44px;padding-top:22px;border-top:1px solid rgba(255,255,255,.10);
   display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:.84rem;
