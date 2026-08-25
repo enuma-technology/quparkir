@@ -480,6 +480,46 @@ label.field span{display:block;font-size:.8rem;font-weight:700;margin-bottom:6px
 .modal h3{font-size:1.1rem;margin-bottom:4px}
 .modal .grab{width:42px;height:5px;border-radius:9px;background:var(--line);margin:0 auto 14px}
 
+/* ---------- struk pembayaran ---------- */
+/* Dibuat menyerupai struk kertas: kop, garis putus-putus, angka rata kanan,
+   dan gerigi sobek di bawah. Latarnya sengaja --app-bg (bukan --card) supaya
+   tepinya terbaca di atas modal yang berwarna kartu. */
+.struk{background:var(--app-bg);border:1px solid var(--line);border-bottom:0;
+  border-radius:14px 14px 0 0;padding:16px 16px 0;margin-top:2px}
+.struk .kop{text-align:center;padding-bottom:12px}
+.struk .merek{font-weight:800;letter-spacing:.16em;font-size:.9rem;color:var(--blue-800)}
+.struk .kop .sub{font-size:.7rem;color:var(--muted);margin-top:2px}
+.struk .lunas{display:inline-block;margin-top:8px;padding:3px 12px;border-radius:999px;
+  background:rgba(34,197,94,.14);color:#166534;font-size:.7rem;font-weight:800;letter-spacing:.1em}
+.struk .pisah{border-top:1px dashed var(--line);margin:10px 0}
+.struk .baris{display:flex;justify-content:space-between;align-items:baseline;gap:14px;
+  font-size:.82rem;padding:3px 0}
+.struk .baris .k{color:var(--muted);white-space:nowrap}
+.struk .baris .v{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.struk .total{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0 2px}
+.struk .total .k{font-weight:800;font-size:.82rem;letter-spacing:.06em}
+.struk .total .v{font-size:1.3rem;font-weight:800;color:var(--blue-700);font-variant-numeric:tabular-nums}
+.struk .kaki{text-align:center;font-size:.68rem;color:var(--muted);padding:10px 4px 14px;line-height:1.5}
+/* Gerigi sobek di tepi bawah. Digambar sebagai LATAR (lingkaran berwarna
+   kartu di atas warna struk), bukan sebagai potongan mask — mask tidak
+   diterapkan konsisten dan hasilnya jadi persegi polos tanpa peringatan
+   apa pun. Konsekuensinya warna takik dikunci ke --card, jadi elemen ini
+   hanya benar bila struk duduk di atas kartu/modal. */
+.struk .gerigi{height:10px;margin:0 -17px -1px;
+  background:radial-gradient(circle 7px at 50% 100%, var(--card) 99%, var(--app-bg) 100%) 50% 0/14px 100% repeat-x}
+
+/* Cetak / Simpan PDF: hanya struknya yang ikut, tanpa lapisan gelap modal. */
+@media print{
+  body{background:#fff}
+  body *{visibility:hidden}
+  .modal-bg,.modal,.struk,.struk *{visibility:visible}
+  .modal-bg{position:absolute;inset:0;background:#fff;backdrop-filter:none;display:block;padding:0}
+  .modal{box-shadow:none;border-radius:0;max-width:360px;margin:0 auto;padding:0;max-height:none;overflow:visible}
+  .modal .grab,.modal h3{display:none}
+  .struk{border:0;background:#fff}
+  .struk .gerigi{display:none}
+}
+
 /* ---------- halaman akun ---------- */
 .acc-profile{position:relative;z-index:2;margin:-44px 16px 0;padding:16px;display:flex;align-items:center;gap:14px;
   box-shadow:0 14px 34px rgba(8,20,70,.22)}

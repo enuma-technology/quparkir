@@ -192,7 +192,7 @@ async function lewatGateway({ endpoint, muatan }) {
     // Kebenaran datang dari webhook lewat dokumen orders, BUKAN dari callback
     // Snap: pengguna bisa menutup browser tepat setelah membayar.
     const berhenti = tungguLunas(orderId, (status) => {
-      if (status === "paid") { berhenti(); tutup({ server: true, amount }); }
+      if (status === "paid") { berhenti(); tutup({ server: true, amount, orderId }); }
       if (status === "failed" || status === "mismatch") { berhenti(); tutup(false); }
     });
 

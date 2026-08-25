@@ -53,14 +53,49 @@ export default async function statusPage(view) {
 
   // Struk. Dipisah karena empat jalur pembayaran berakhir di sini, dan dulu
   // salinannya sempat berbeda-beda antar jalur.
-  function struk(s, { amount, method, sisa = null }) {
+  //
+  // Bentuknya sengaja meniru struk kertas — pengguna memakainya untuk
+  // membuktikan pembayaran ke petugas di lapangan, dan "kartu sukses" biasa
+  // tidak memuat hal yang ditanyakan petugas: plat, jam masuk, jam keluar,
+  // dan nomor rujukan.
+  function struk(s, { amount, method, sisa = null, ref = null }) {
+    const keluar = Date.now();
+    const baris = (k, v) => h(".baris", {}, [h("span.k", { text: k }), h("span.v", { text: v })]);
+    const pisah = () => h(".pisah");
+
+    const isi = h(".struk", {}, [
+      h(".kop", {}, [
+        h(".merek", { text: "QUPARKIR" }),
+        h(".sub", { text: "Parkir Digital Surakarta" }),
+        h(".lunas", { text: "✓ LUNAS" }),
+      ]),
+      pisah(),
+      baris("Lokasi", s.locationName || "—"),
+      baris("Kendaraan", s.vehicle.plate + " · " + s.vehicle.type),
+      baris("Masuk", fmtDate(s.checkinAt)),
+      baris("Keluar", fmtDate(keluar)),
+      baris("Durasi", durasiText(keluar - s.checkinAt)),
+      pisah(),
+      baris("Tarif parkir", rupiah(amount)),
+      h(".total", {}, [h("span.k", { text: "TOTAL" }), h("span.v", { text: rupiah(amount) })]),
+      baris("Metode", method === "qupay" ? "QuPay (saldo)" : "QRIS / e-wallet"),
+      sisa !== null ? baris("Sisa saldo", rupiah(sisa)) : null,
+      pisah(),
+      // Nomor rujukan: order gateway kalau ada (itu yang bisa dicari di dasbor
+      // Midtrans), kalau tidak, id sesi — keduanya cukup untuk melacak satu
+      // pembayaran sampai ke dokumen Firestore-nya.
+      baris("No. Rujukan", (ref || s.id || "").slice(0, 24).toUpperCase()),
+      baris("Terverifikasi", s.verified ? "Ya, oleh petugas" : "Belum"),
+      h(".kaki", { html: "Terima kasih telah memarkir dengan tertib.<br>Simpan struk ini sebagai bukti pembayaran." }),
+      h(".gerigi"),
+    ]);
+
     const body = h("div", {}, [
-      h(".center", { style: "font-size:46px" }, "✅"),
-      h("h3.center", { text: "Pembayaran Berhasil" }),
-      h("p.center.muted", { style: "margin:6px 0 14px", text: s.locationName }),
-      h(".li", {}, [h(".ic", { text: "💳" }), h("div", { style: "flex:1" }, [h(".t", { text: "Total dibayar" }), h(".s", { text: method === "qupay" ? "QuPay" : "QRIS" })]), h(".end", {}, [h("b", { text: rupiah(amount), style: "color:var(--blue-700);font-size:1.1rem" })])]),
-      sisa !== null ? h("p.center.muted", { style: "margin-top:8px", html: "<small>Sisa saldo: " + rupiah(sisa) + "</small>" }) : null,
-      h("button.btn", { style: "margin-top:16px", onclick: () => { $("#modalHost").innerHTML = ""; go("#/riwayat"); } }, "Lihat Riwayat"),
+      isi,
+      h("div", { style: "display:flex;gap:10px;margin-top:16px" }, [
+        h("button.btn.ghost", { style: "flex:1", onclick: () => window.print() }, "🖨 Cetak"),
+        h("button.btn", { style: "flex:1", onclick: () => { $("#modalHost").innerHTML = ""; go("#/riwayat"); } }, "Riwayat"),
+      ]),
     ]);
     modal("Struk Parkir", body);
   }
@@ -95,7 +130,7 @@ export default async function statusPage(view) {
         // menutup sesi, mencatat transaksi, dan mengembalikan slot lokasi.
         // Memanggil DB.checkout() lagi di sini akan menutupnya dua kali — dan
         // tulisannya pasti ditolak rules karena sesinya bukan 'active' lagi.
-        if (hasil.server) return struk(s, { amount: hasil.amount, method });
+        if (hasil.server) return struk(s, { amount: hasil.amount, method, ref: hasil.orderId });
       }
 
       // ---- Jalur lama: browser yang menutup sesi ----
