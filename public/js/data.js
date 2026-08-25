@@ -94,7 +94,11 @@ function demoBackend() {
     transactions: { subscribe: (cb) => sub(x => x.transactions.sort((a, b) => b.paidAt - a.paidAt), cb) },
     officers: { subscribe: (cb) => sub(x => x.officers, cb) },
     profile: { get: (u) => s.profiles[u] || null, set: (u, p) => { s.profiles[u] = { ...s.profiles[u], ...p }; emit(); } },
-    wallet: { get: (u) => s.wallet[u] ?? 25000, set: (u, v) => { s.wallet[u] = v; emit(); } },
+    wallet: {
+      get: (u) => s.wallet[u] ?? 25000,
+      set: (u, v) => { s.wallet[u] = v; emit(); },
+      subscribe: (u, cb) => sub(x => x.wallet[u] ?? 25000, cb),
+    },
     // Top up TIDAK menambah saldo sendiri — ia membuat permintaan yang harus
     // dikonfirmasi petugas. Lihat firestore.rules: pemilik hanya boleh
     // MENGURANGI users.wallet, menambah adalah hak petugas.
@@ -244,7 +248,18 @@ async function firebaseBackend() {
     transactions: { subscribe: (cb) => watch(collection(db, "transactions"), cb, s => colArr(s).sort((a, b) => b.paidAt - a.paidAt), "transactions") },
     officers: { subscribe: (cb) => watch(collection(db, "officers"), cb, colArr, "officers") },
     profile: { get: async (u) => (await getDoc(doc(db, "users", u))).data() || null, set: (u, p) => setDoc(doc(db, "users", u), p, { merge: true }) },
-    wallet: { get: async (u) => (await getDoc(doc(db, "users", u))).data()?.wallet ?? 25000, set: (u, v) => setDoc(doc(db, "users", u), { wallet: v }, { merge: true }) },
+    wallet: {
+      get: async (u) => (await getDoc(doc(db, "users", u))).data()?.wallet ?? 25000,
+      set: (u, v) => setDoc(doc(db, "users", u), { wallet: v }, { merge: true }),
+      // Langganan dokumen profil. WAJIB ada sejak saldo bisa berubah dari
+      // SERVER: top up lewat gateway ditambahkan webhook, dan bayar parkir
+      // memotong saldo di wallet-checkout — dua-duanya tanpa satu pun tulisan
+      // dari peramban ini. Tanpa langganan, angka di layar baru benar setelah
+      // pengguna memuat ulang halaman, dan itu tampak seperti top up gagal.
+      subscribe: (u, cb) => onSnapshot(doc(db, "users", u),
+        (snap) => cb(snap.data()?.wallet ?? 25000),
+        (e) => console.warn("Langganan saldo gagal:", e.code || e.message)),
+    },
     topups: {
       create: (u, { amount, name }) => addDoc(collection(db, "topups"), {
         uid: u, name: name || "", amount, method: "qris", status: "pending", createdAt: Date.now() }),

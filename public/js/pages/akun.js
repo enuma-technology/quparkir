@@ -106,17 +106,22 @@ function topUpModal(u) {
   ]));
 }
 
-// Kartu saldo QuPay + aksi cepat
+// Kartu saldo QuPay + aksi cepat.
+// Angkanya dipisah jadi simpul sendiri supaya bisa diperbarui langganan tanpa
+// menggambar ulang seluruh kartu (tombolnya tidak boleh ikut berkedip).
 function balanceCard(u, bal) {
-  return h(".acc-balance", {}, [
+  const amt = h(".amt", { text: rupiah(bal) });
+  const kartu = h(".acc-balance", {}, [
     h(".lbl", { text: "Saldo QuPay" }),
-    h(".amt", { text: rupiah(bal) }),
+    amt,
     h("p.sub", { text: "Untuk pembayaran parkir tanpa uang tunai" }),
     h(".acts", {}, [
       h("button.primary", { type: "button", onclick: () => topUpModal(u) }, "＋ Top Up"),
       h("button", { type: "button", onclick: () => go("#/riwayat") }, "🧾 Riwayat"),
     ]),
   ]);
+  kartu.setSaldo = (v) => { amt.textContent = rupiah(v); };
+  return kartu;
 }
 
 // Pengalih peran — hanya berguna di mode demo (Firebase mengatur role via Firestore)
@@ -136,6 +141,7 @@ export default async function akunPage(view) {
 
   const u = Auth.current();
   const bal = await Promise.resolve(DB.wallet.get(u.uid));
+  const kartuSaldo = balanceCard(u, bal);
 
   const akunItems = [
     item({ ic: "🚗", t: "Kendaraan Saya", s: "Kelola motor & mobil terdaftar", onclick: () => go("#/kendaraan") }),
@@ -165,7 +171,7 @@ export default async function akunPage(view) {
       ]),
     ]),
 
-    h("div.pad", { style: "padding-bottom:0" }, [balanceCard(u, bal)]),
+    h("div.pad", { style: "padding-bottom:0" }, [kartuSaldo]),
 
     group("Akun Saya", akunItems),
     kelolaItems.length ? group("Kelola", kelolaItems) : null,
@@ -181,4 +187,10 @@ export default async function akunPage(view) {
 
     h("p.acc-foot", { html: "Backend aktif: <b>" + MODE.toUpperCase() + "</b> · QuParkir Surakarta" }),
   ].filter(Boolean));
+
+  // Saldo mengikuti dokumen profil secara langsung: top up lewat gateway
+  // ditambahkan webhook di server, jadi tidak ada tulisan dari halaman ini
+  // yang bisa dijadikan penanda kapan harus menggambar ulang.
+  const unsubSaldo = DB.wallet.subscribe(u.uid, (v) => kartuSaldo.setSaldo(v));
+  return () => { unsubSaldo && unsubSaldo(); };
 }

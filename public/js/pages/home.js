@@ -55,11 +55,12 @@ const WALLET_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 // Kartu QuPay: nominal + tombol mata untuk menyamarkannya
 function walletCard(bal) {
   let hidden = isHidden();
+  let nilai = bal;
   const amount = h("b");
   const eye = h("button.bal-eye", { type: "button" });
 
   function paint() {
-    amount.textContent = hidden ? "Rp ••••••" : rupiah(bal);
+    amount.textContent = hidden ? "Rp ••••••" : rupiah(nilai);
     amount.classList.toggle("masked", hidden);
     eye.innerHTML = hidden ? EYE_OFF : EYE_ON;
     eye.setAttribute("aria-pressed", hidden ? "true" : "false");
@@ -72,7 +73,7 @@ function walletCard(bal) {
   });
   paint();
 
-  return h(".wallet", {}, [
+  const kartu = h(".wallet", {}, [
     h(".wlogo", { html: WALLET_ICON }),
     h(".wname", {}, [document.createTextNode("QuPay"), h("small", { text: "Saldo parkir cashless" })]),
     h(".bal", { onclick: () => go("#/akun") }, [
@@ -80,6 +81,10 @@ function walletCard(bal) {
       h(".bal-row", {}, [amount, eye]),
     ]),
   ]);
+  // Saldo bisa berubah dari server (top up lewat webhook, potongan parkir di
+  // wallet-checkout), jadi kartunya harus bisa diperbarui dari luar.
+  kartu.setSaldo = (v) => { nilai = v; paint(); };
+  return kartu;
 }
 
 function bantuanModal() {
@@ -101,6 +106,7 @@ function bantuanModal() {
 export default async function homePage(view) {
   const u = Auth.current();
   const bal = await Promise.resolve(DB.wallet.get(u.uid));
+  const kartuSaldo = walletCard(bal);
 
   const bannerWrap = h("div");           // pengumuman dari admin (opsional, tersembunyi bila kosong)
   const activeSlot = h("div");           // banner sesi aktif
@@ -112,7 +118,7 @@ export default async function homePage(view) {
 
   view.append(
     header,
-    walletCard(bal),
+    kartuSaldo,
     bannerWrap,
     activeSlot,
     h("nav.grid", {}, QUICK.map(q =>
@@ -161,7 +167,10 @@ export default async function homePage(view) {
   const unsubP = DB.promos.subscribe((list) => { livePromos = list.length ? list : DEFAULT_PROMOS; paintPromos(promoWrap, livePromos); });
   const unsubB = DB.banners.subscribe((list) => paintBanners(bannerWrap, list));
 
-  return () => { unsubS && unsubS(); unsubL && unsubL(); unsubP && unsubP(); unsubB && unsubB(); };
+  // Saldo langsung dari dokumen profil — lihat catatan di data.js.
+  const unsubW = DB.wallet.subscribe(u.uid, (v) => kartuSaldo.setSaldo(v));
+
+  return () => { unsubS && unsubS(); unsubL && unsubL(); unsubP && unsubP(); unsubB && unsubB(); unsubW && unsubW(); };
 }
 
 // Pengumuman singkat yang diisi admin (teks polos, tanpa HTML). Tersembunyi
