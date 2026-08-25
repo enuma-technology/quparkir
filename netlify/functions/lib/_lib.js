@@ -100,8 +100,14 @@ export function corsHeaders(req) {
 export const json = (req, status, body) =>
   Response.json(body, { status, headers: corsHeaders(req) });
 
+// Body WAJIB null. `new Response("", { status: 204 })` melempar TypeError —
+// status 204/205/304 tidak boleh membawa body — dan karena galat itu terjadi
+// di dalam handler, Netlify membalas 502 TANPA header CORS. Gejalanya di
+// peramban menyesatkan total: "No 'Access-Control-Allow-Origin' header",
+// seolah daftar origin yang salah. Akibatnya seluruh jalur gateway diam-diam
+// mundur ke QRIS merchant selama dua deploy.
 export const preflight = (req) =>
-  new Response("", { status: 204, headers: corsHeaders(req) });
+  new Response(null, { status: 204, headers: corsHeaders(req) });
 
 // ---------- Tarif ----------
 // ⚠️ SALINAN dari public/js/util.js — versi INI yang menentukan tagihan, karena

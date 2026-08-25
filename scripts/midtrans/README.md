@@ -17,6 +17,7 @@ npm run midtrans:test
 
 | Berkas | Yang dibuktikan |
 |---|---|
+| `uji-cors.mjs` (25 kasus) | Preflight OPTIONS tiap endpoint: tidak melempar, 204, mengizinkan `localhost:5000` & `quparkir.web.app`, menolak origin asing. Tidak perlu emulator jalan. |
 | `uji-webhook.mjs` (30 kasus) | Tanda tangan palsu ditolak 403 · notifikasi ganda tidak mencatat transaksi/saldo dua kali · nominal tidak cocok tidak meluluskan pembayaran · sesi ditutup, slot kembali, `activeSession` dilepas · top up menambah saldo lewat webhook, bukan lewat tombol |
 | `uji-saldo.mjs` (21 kasus) | Bayar parkir pakai saldo: tarif dihitung server · saldo kurang tidak memotong sebagian · bayar dua kali ditolak 409 · sesi orang lain 403 · tanpa token 401 |
 
@@ -31,6 +32,18 @@ idempotensi, dan seluruh isi `runTransaction()`.
 bertanda tangan, jadi token uji bisa dirakit tanpa kunci apa pun. Akun ujinya
 tetap harus dibuat lebih dulu — Auth emulator menolak token milik pengguna yang
 tidak ada, dan itu justru salah satu hal yang ingin dibuktikan.
+
+## Kenapa `uji-cors.mjs` ada
+
+Preflight sempat membalas `new Response("", { status: 204 })`, dan itu
+**melempar TypeError** — status 204 tidak boleh punya body. Netlify lalu
+membalas 502 tanpa header CORS, dan pesan di peramban menyesatkan total:
+"No 'Access-Control-Allow-Origin' header", seolah daftar origin-nya yang salah.
+
+Akibatnya seluruh jalur gateway diam-diam mundur ke QRIS merchant selama dua
+deploy — dan tidak ada satu uji pun yang menangkapnya, karena semua uji lain
+memanggil handler dengan method POST. Peramban selalu mengirim OPTIONS lebih
+dulu; uji harus melakukan hal yang sama.
 
 ## Dua jebakan yang pernah memakan waktu
 

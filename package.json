@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "netlify dev",
     "rules:test": "cd scripts/rules-test && node rules.test.mjs && node tx.test.mjs && node topup.test.mjs",
-    "midtrans:test": "node scripts/midtrans/uji-webhook.mjs && node scripts/midtrans/uji-saldo.mjs"
+    "midtrans:test": "node scripts/midtrans/uji-cors.mjs && node scripts/midtrans/uji-webhook.mjs && node scripts/midtrans/uji-saldo.mjs"
   },
   "repository": {
     "type": "git",
