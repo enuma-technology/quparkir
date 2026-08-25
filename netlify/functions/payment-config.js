@@ -15,11 +15,24 @@ export default async (req) => {
   if (req.method !== "GET") return json(req, 405, { error: "method_not_allowed" });
 
   const clientKey = process.env.MIDTRANS_CLIENT_KEY || "";
+
+  // Diagnosis: BENAR/SALAH saja, tidak pernah nilainya. Tanpa ini, "enabled:
+  // false" punya tiga sebab yang tidak bisa dibedakan dari luar, dan
+  // membedakannya berarti berburu di dasbor Netlify satu per satu — env var
+  // di Netlify baru terbaca function setelah deploy, jadi tiap tebakan yang
+  // meleset berharga satu deploy (15 kredit).
+  const siap = {
+    saklar: MIDTRANS_AKTIF,
+    serverKey: !!process.env.MIDTRANS_SERVER_KEY,
+    clientKey: !!clientKey,
+  };
+
   return new Response(
     JSON.stringify({
-      // Klien wajib memakai gabungan ini, bukan salah satunya: saklar menyala
-      // tapi client key kosong = Snap tidak akan pernah terbuka.
-      enabled: MIDTRANS_AKTIF && !!clientKey && !!process.env.MIDTRANS_SERVER_KEY,
+      // Klien wajib memakai gabungan ketiganya, bukan salah satunya: saklar
+      // menyala tapi client key kosong = Snap tidak akan pernah terbuka.
+      enabled: siap.saklar && siap.serverKey && siap.clientKey,
+      siap,
       clientKey,
       snapUrl: MIDTRANS.snapUrl,
       isProduction: MIDTRANS.isProd,
