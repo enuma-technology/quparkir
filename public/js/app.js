@@ -85,6 +85,18 @@ async function main() {
 
   if (!location.hash) location.hash = "#/home";
 
+  // Halaman awal menurut peran. Petugas bekerja di lapangan: yang dibutuhkan
+  // begitu masuk adalah layar verifikasi, bukan promo dan kartu saldo.
+  //
+  // Perannya dibaca dari users/{uid}.role di Firestore — BUKAN dicocokkan dari
+  // alamat email. Mencocokkan email berarti daftar petugas ikut terbaca siapa
+  // pun yang membuka JavaScript-nya, dan mengganti petugas berarti deploy
+  // ulang. Peran disetel lewat scripts/admin/set-role.mjs.
+  //
+  // Tujuan yang tersimpan (deep link sebelum login) tetap menang: kalau
+  // petugas mengetuk tautan e-ticket, dia harus mendarat di sana.
+  const berandaPeran = (u) => (u?.role === "petugas" ? "#/petugas" : "#/home");
+
   // Tunggu status auth pertama (Firebase memulihkan sesi dari IndexedDB) SEBELUM
   // router jalan. Tanpa ini, refresh selalu terbaca "belum login" sesaat → guard
   // melempar ke #/login lalu memantul balik ke halaman semula.
@@ -100,7 +112,7 @@ async function main() {
     rememberRedirect(location.hash || "#/home");
     history.replaceState(null, "", "#/login");
   } else if (u0 && AUTH_PAGES.includes(p0)) {
-    history.replaceState(null, "", takeRedirect() || "#/home");
+    history.replaceState(null, "", takeRedirect() || berandaPeran(u0));
   }
 
   // reaktif: kalau status auth berubah (login/logout/sesi kedaluwarsa), arahkan
@@ -110,7 +122,7 @@ async function main() {
     if (u && !seeded) { seeded = true; const { DB } = await import("./data.js"); DB.ensureSeed && DB.ensureSeed(); }
     // logout / sesi habis → ke login (tanpa menyimpan tujuan: mulai bersih)
     if (!u && !AUTH_PAGES.includes(path)) go("#/login");
-    if (u && AUTH_PAGES.includes(path)) go(takeRedirect() || "#/home");
+    if (u && AUTH_PAGES.includes(path)) go(takeRedirect() || berandaPeran(u));
     updateChrome();
   });
 
