@@ -1,5 +1,5 @@
 import { initializeTestEnvironment, assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
-import { doc, setDoc, updateDoc, addDoc, collection, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, updateDoc, addDoc, collection, deleteDoc } from "firebase/firestore";
 import fs from "fs";
 
 const JAM = 3600000;
@@ -29,6 +29,8 @@ await env.withSecurityRulesDisabled(async (c) => {
     mk("s-verif", ALI, "motor", 1), mk("s-verif2", ALI, "motor", 1),
     mk("s-tx", ALI, "motor", 5),
   ]);
+  await setDoc(doc(d, "orders", "QP-s-tx-1"), {
+    uid: ALI, sessionId: "s-tx", amount: 6000, status: "pending", createdAt: Date.now() });
   await setDoc(doc(d, "topups", "t-ali"), { uid: ALI, name: "Ali", amount: 50000, method: "qris", status: "pending", createdAt: Date.now() });
   await setDoc(doc(d, "topups", "t-ali2"), { uid: ALI, name: "Ali", amount: 50000, method: "qris", status: "pending", createdAt: Date.now() });
 });
@@ -77,6 +79,17 @@ await t("catat 6000 utk sesi motor 5 jam → BOLEH", assertSucceeds(addDoc(colle
 await t("catat 1000 utk sesi yg sama → DITOLAK", assertFails(addDoc(collection(ali, "transactions"), tx(1000))));
 await t("catat tanpa sessionId → DITOLAK", assertFails(addDoc(collection(ali, "transactions"), { uid: ALI, amount: 6000, method: "qris", paidAt: Date.now() })));
 await t("catat merujuk sesi orang lain → DITOLAK", assertFails(addDoc(collection(budi, "transactions"), { ...tx(6000), uid: BUD })));
+
+console.log("\n— ORDER GATEWAY (/orders) —");
+// Ditulis hanya oleh Admin SDK di Netlify Functions (yang memintas rules
+// sepenuhnya). Dari browser, dokumen ini harus BENAR-BENAR baca-saja: kalau
+// pemiliknya bisa menyetel status 'paid' sendiri, seluruh gateway tidak ada
+// gunanya — webhook cuma jadi hiasan.
+await t("Ali membaca ordernya sendiri → BOLEH", assertSucceeds(getDoc(doc(ali, "orders", "QP-s-tx-1"))));
+await t("Budi membaca order Ali → DITOLAK", assertFails(getDoc(doc(budi, "orders", "QP-s-tx-1"))));
+await t("Ali menyetel ordernya jadi paid → DITOLAK", assertFails(updateDoc(doc(ali, "orders", "QP-s-tx-1"), { status: "paid" })));
+await t("Ali membuat order sendiri → DITOLAK", assertFails(setDoc(doc(ali, "orders", "QP-palsu"), { uid: ALI, sessionId: "s-tx", amount: 1, status: "paid" })));
+await t("Ali menghapus ordernya → DITOLAK", assertFails(deleteDoc(doc(ali, "orders", "QP-s-tx-1"))));
 
 console.log(`\n=== ${pass} lulus, ${fail} gagal ===`);
 await env.cleanup();

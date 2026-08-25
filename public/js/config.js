@@ -51,8 +51,22 @@ export const EMULATOR = { host: "127.0.0.1", firestorePort: 8080, authUrl: "http
 // merchant, TAPI aplikasi tidak bisa tahu sendiri kapan lunas — QRIS statis
 // tidak membawa order_id. Konfirmasinya manual. Lihat docs/PAYMENT-GOBIZ.md §0.2.
 export const paymentConfig = {
+  // SAKLAR SISI KLIEN. "simulasi" (default) | "midtrans"
+  //
+  // Menyalakannya jadi "midtrans" TIDAK cukup, dan itu memang disengaja:
+  // pay.js masih bertanya ke /payment-config apakah saklar server (env
+  // MIDTRANS_ENABLED di Netlify) juga menyala. Kalau tidak — atau function-nya
+  // tak terjangkau — pembayaran mundur sendiri ke QRIS merchant di bawah.
+  // Dua saklar terpisah supaya jalur QRIS yang sudah terbukti menerima uang
+  // tidak bisa ikut mati karena satu salah ketik.
   provider: "simulasi",
+  // Sengaja dibiarkan kosong: Client Key (nilai publik) diambil saat berjalan
+  // dari /payment-config, jadi tidak ada satu pun kunci yang perlu disalin
+  // tangan ke dalam repo ini — repo ini publik.
   midtransClientKey: "",
+  // Rumah Netlify Functions. Firebase Hosting tidak menjalankan function,
+  // jadi alamatnya memang beda host dari app-nya (lihat CORS di _lib.js).
+  apiBase: "https://quparkir-pay.netlify.app/.netlify/functions",
   // QRIS merchant GoPay — Quparkir, COLOMADU (KARANGANYAR), NMID ID1026577085958.
   // Statis & sah dipublikasikan (memang dicetak untuk umum); nominal disisipkan
   // di browser oleh toDynamic() di qris.js.

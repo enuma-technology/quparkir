@@ -22,9 +22,31 @@
   # Yang BENAR-BENAR rahasia hanya FB_PRIVATE_KEY dan MIDTRANS_SERVER_KEY, dan
   # keduanya sengaja TIDAK dicantumkan di sini — biar tetap dipindai. Kalau
   # suatu saat salah satu dari keduanya bocor ke dalam repo, build harus mati.
-  SECRETS_SCAN_OMIT_KEYS = "FB_PROJECT_ID,ALLOWED_ORIGIN,FB_CLIENT_EMAIL,MIDTRANS_CLIENT_KEY,MIDTRANS_IS_PRODUCTION"
+  SECRETS_SCAN_OMIT_KEYS = "FB_PROJECT_ID,ALLOWED_ORIGIN,FB_CLIENT_EMAIL,MIDTRANS_CLIENT_KEY,MIDTRANS_IS_PRODUCTION,MIDTRANS_ENABLED"
+
+# ============================================================
+# SAKLAR PEMBAYARAN GATEWAY
+#
+# Jalur Midtrans hidup HANYA kalau env var MIDTRANS_ENABLED bernilai "true".
+# Nilainya TIDAK diset di sini dengan sengaja — saklar harus bisa dimatikan
+# dari dasbor Netlify dalam hitungan detik, tanpa push dan tanpa deploy ulang:
+#
+#   netlify env:set MIDTRANS_ENABLED true      # nyalakan
+#   netlify env:unset MIDTRANS_ENABLED         # matikan
+#
+# Selama mati, create-payment membalas 503 dan klien mundur sendiri ke QRIS
+# merchant. midtrans-webhook TETAP hidup — uang yang telanjur dibayar tetap
+# harus dicatat.
+#
+# MIDTRANS_ENABLED ikut dikecualikan dari secrets scanning di atas: nilainya
+# hanya "true"/"false" dan tertulis di dokumentasi repo ini, jadi kalau ikut
+# dipindai, build mati oleh temuan yang semuanya wajar.
+# ============================================================
 
 # Jaring pengaman: sapu order 'pending' yang webhook-nya tidak pernah sampai.
-# Baru diaktifkan setelah reconcile.js ada — lihat PAYMENT-SETUP.md §5d.
+# Jadwalnya sekarang dideklarasikan DI DALAM netlify/functions/reconcile.js
+# (Functions API v2: `export const config = { schedule: "@hourly" }`) dan masih
+# dikomentari di sana. Blok [functions."reconcile"] di bawah sengaja dibiarkan
+# mati supaya tidak ada dua sumber kebenaran untuk satu jadwal.
 # [functions."reconcile"]
 #   schedule = "@hourly"

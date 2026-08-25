@@ -57,11 +57,17 @@ export default async function statusPage(view) {
       const preview = hitungTarif(s.vehicle.type, Date.now() - s.checkinAt);
       const method = await choosePayment({ amount: preview, balance: bal });
       if (!method) return;
+      let z = null;
       if (method === "qris") {
-        const ok = await payQRIS({ amount: preview, title: "Bayar Parkir — QRIS" });
-        if (!ok) return toast("Pembayaran dibatalkan", "err");
+        const hasil = await payQRIS({ amount: preview, title: "Bayar Parkir — QRIS", sessionId: s.id });
+        if (!hasil) return toast("Pembayaran dibatalkan", "err");
+        // hasil.server = pembayaran lewat gateway: webhook di server SUDAH
+        // menutup sesi, mencatat transaksi, dan mengembalikan slot lokasi.
+        // Memanggil DB.checkout() lagi di sini akan menutupnya dua kali — dan
+        // tulisannya pasti ditolak rules karena sesinya bukan 'active' lagi.
+        if (hasil.server) z = { amount: hasil.amount };
       }
-      const z = await DB.checkout(s.id, { method });
+      if (!z) z = await DB.checkout(s.id, { method });
       let sisa = null;
       if (method === "qupay") {
         // Baca ulang saldo TERBARU tepat sebelum debit (hindari lost-update dari tab lain).

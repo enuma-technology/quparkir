@@ -136,6 +136,19 @@ service cloud.firestore {
              get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.checkinAt);
     }
 
+    // Order pembayaran gateway (Midtrans). Ditulis HANYA oleh Admin SDK di
+    // Netlify Functions, dan Admin SDK memintas rules sepenuhnya — 'write: if
+    // false' di sini tidak menghalanginya sedikit pun, tapi menutup rapat
+    // penulisan dari browser. Tanpa itu, siapa pun bisa menyetel status order
+    // miliknya sendiri jadi 'paid' lewat console dan parkir gratis.
+    //
+    // Izin BACA tetap diperlukan: klien menunggu pembayaran lunas dengan
+    // onSnapshot ke dokumen ini, bukan dengan mempercayai callback Snap.
+    match /orders/{id} {
+      allow read: if isSignedIn() && (resource.data.uid == uid() || isAdmin());
+      allow write: if false;
+    }
+
     // Permintaan top up QuPay. Pengguna membayar lewat QRIS merchant, lalu
     // mencatat permintaannya di sini; petugas mencocokkan ke aplikasi merchant
     // dan menyetujui. Saldo baru bertambah pada langkah persetujuan itu —

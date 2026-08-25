@@ -93,7 +93,7 @@ quparkir/
 > | **1a** `wallet` | Ditutup dengan cara lain: pemilik hanya boleh *mengurangi*; menambah adalah hak petugas lewat koleksi `/topups` |
 > | **1b** `transactions` | Belum baca-saja. Klien masih menulis, tapi nominalnya dicocokkan ke sesi yang dirujuk |
 > | **1c** `sessions.amount` | Ditutup: rules menghitung sendiri batas bawah tarif dari `checkinAt` + jam server |
-> | **1d** koleksi `orders` | Belum ada — ini memang butuh server, kerjakan bersama Langkah 5 |
+> | **1d** koleksi `orders` | ✅ Sudah ada sejak 25 Agu 2026 (baca-saja bagi klien, ditulis Admin SDK). Lima kasus ujinya di `scripts/rules-test/rules.test.mjs` |
 >
 > Yang masih perlu dikerjakan dari Langkah 1 hanyalah **1d**, dan **1b** baru
 > bisa dijadikan baca-saja setelah `create-payment.js` jalan. Rinciannya di
@@ -263,6 +263,54 @@ netlify env:import .env
 ---
 
 ## Langkah 5 — Tulis fungsi server
+
+> **✅ SUDAH DITULIS pada 25 Agustus 2026 — dan berbeda dari contoh di bawah.**
+>
+> Berkasnya kini ada di repo, semuanya **di belakang saklar** (lihat §5e).
+> Contoh kode di §5a–5d dibiarkan apa adanya sebagai bahan rujukan, tapi versi
+> yang berlaku adalah yang di `netlify/functions/`. Bedanya yang penting:
+>
+> | Hal | Panduan §5a–5d | Yang sebenarnya dipakai |
+> |---|---|---|
+> | Gaya function | v1 (`exports.handler`, CommonJS) | **v2 ESM** (`export default`, `Request`/`Response`) — mengikuti `hello.js` yang sudah terbukti jalan |
+> | Berkas bersama | `netlify/functions/_lib.js` | `netlify/functions/lib/_lib.js` — berkas .js yang duduk langsung di folder functions akan dideploy jadi endpoint sendiri |
+> | `terapkan()` | diekspor dari `midtrans-webhook.js` | pindah ke `_lib.js` sebagai `terapkanStatus()`, supaya webhook & reconcile tidak saling mengimpor |
+> | Urutan baca/tulis transaksi | melanggar aturan Firestore (baca lokasi setelah tulis) | **diperbaiki** — order, sesi, dan lokasi dibaca semua di atas |
+> | `activeSession` | tidak disentuh | ikut dikosongkan; tanpa itu pengguna tidak bisa check-in lagi meski parkirnya sudah lunas |
+> | Nominal Get Status API | `signature_key: null` | `order_id` ikut dipaksakan dari dokumen order |
+> | Endpoint tambahan | — | `payment-config.js`: menyerahkan Client Key (publik) ke browser, supaya tidak ada kunci yang perlu disalin tangan ke repo publik ini |
+>
+> **Uji tanpa deploy:** `npm run midtrans:test` (butuh Firestore Emulator jalan).
+> 21 kasus, termasuk tiga yang paling menentukan di §8: tanda tangan palsu
+> ditolak 403, notifikasi ganda tidak menutup sesi dua kali, dan nominal yang
+> tidak cocok tidak meluluskan pembayaran. Uji ini memakai Server Key palsu dan
+> menulis ke emulator, jadi tidak menyentuh kunci asli maupun data produksi —
+> dan tidak membakar 15 kredit Netlify seperti sekali deploy produksi.
+
+### 5e. Saklar — cara menyalakan & mematikan
+
+Jalur Midtrans mati secara default. Menyalakannya perlu **dua** saklar,
+sengaja terpisah supaya satu salah ketik tidak bisa mematikan jalur QRIS
+merchant yang sudah terbukti menerima uang sungguhan:
+
+| Saklar | Tempat | Nyalakan |
+|---|---|---|
+| Server | env var Netlify | `netlify env:set MIDTRANS_ENABLED true` |
+| Klien | `public/js/config.js` | `paymentConfig.provider = "midtrans"` |
+
+Perilaku saat salah satu mati:
+
+- Server mati → `create-payment` membalas **503**, `pay.js` mundur ke QRIS merchant.
+- Klien mati → jalur gateway tidak pernah dipanggil sama sekali.
+- Function tak terjangkau / perangkat offline → sama, mundur ke QRIS merchant.
+- **`midtrans-webhook` tetap hidup dalam keadaan apa pun.** Kalau saklar
+  dimatikan selagi ada pembayaran yang telanjur berjalan, uangnya tetap dicatat
+  dan sesinya tetap ditutup. Mematikan saklar menghentikan order **baru**, bukan
+  yang sudah berjalan.
+
+Mematikan kembali: `netlify env:unset MIDTRANS_ENABLED` — berlaku detik itu
+juga, tanpa push dan tanpa deploy ulang.
+
 
 ### 5a. Berkas bersama — `netlify/functions/_lib.js`
 
@@ -568,6 +616,12 @@ Catat URL yang muncul, mis. `https://quparkir-pay.netlify.app`.
 
 ### 6a. `public/js/config.js`
 
+> **Sudah dikerjakan, tapi berbeda dari contoh ini.** `midtransClientKey` dan
+> `snapUrl` TIDAK ditulis di berkas ini: repo ini publik, dan menyalin kunci
+> dengan tangan adalah cara dua kunci sebelumnya bocor. Keduanya diambil saat
+> berjalan dari `/.netlify/functions/payment-config`. Yang tersisa di config.js
+> hanyalah `provider` (saklar klien) dan `apiBase`.
+
 ```js
 export const paymentConfig = {
   provider: "midtrans",
@@ -591,6 +645,13 @@ frame-src   ... https://app.sandbox.midtrans.com https://app.midtrans.com
 ```
 
 ### 6c. `public/js/pay.js`
+
+> **Sudah dikerjakan.** Versi yang berlaku ada di `public/js/pay.js`; ia
+> menambahkan hal yang tidak ada di contoh bawah: pengecekan saklar server,
+> kemunduran otomatis ke QRIS merchant, tenggang 20 detik setelah popup Snap
+> ditutup (webhook biasanya datang beberapa detik setelahnya), dan hasil
+> `{ server: true, amount }` supaya `status.js` tahu sesinya sudah ditutup
+> server dan tidak menutupnya untuk kedua kali.
 
 Ganti `payMidtrans()` yang masih stub:
 

@@ -1,11 +1,25 @@
 // ============================================================
-// Pembayaran — gateway-ready: SIMULASI (default) / Midtrans (stub).
-// choosePayment() → pilih metode; payQRIS() → proses bayar QRIS.
+// Pembayaran — tiga jalur, dipilih otomatis:
+//
+//   1. Midtrans Snap  → hanya bila SAKLAR KLIEN (paymentConfig.provider) dan
+//                       SAKLAR SERVER (env MIDTRANS_ENABLED) sama-sama menyala,
+//                       dan pembayarannya punya sessionId. Nominal dihitung
+//                       server; sesi ditutup webhook, bukan oleh browser.
+//   2. QRIS merchant  → string QRIS statis diubah jadi dinamis di browser.
+//                       Sudah terbukti menerima uang sungguhan.
+//   3. Simulasi       → QR palsu, untuk mode DEMO.
+//
+// Urutan mundurnya sengaja satu arah: apa pun yang gagal di jalur 1 selalu
+// jatuh ke jalur 2. Jadi menyalakan Midtrans tidak bisa mematikan jalur yang
+// sudah berhasil — itu syarat yang disepakati sebelum function ini ditulis.
+//
+// choosePayment() → pilih metode; payQRIS() → proses bayar non-QuPay.
 // ============================================================
 import { h, $, rupiah, modal, toast } from "./util.js";
 import { renderQR } from "./qr.js";
 import { toDynamic } from "./qris.js";
 import { paymentConfig } from "./config.js";
+import { DB } from "./data.js";
 
 // Modal pilih metode. Resolve 'qupay' | 'qris' | null (batal via backdrop).
 export function choosePayment({ amount, balance }) {
@@ -29,10 +43,22 @@ export function choosePayment({ amount, balance }) {
   });
 }
 
-// Bayar via QRIS. Resolve true (lunas) / false (batal).
-export async function payQRIS({ amount, title = "Pembayaran QRIS" } = {}) {
-  if (paymentConfig.provider === "midtrans" && paymentConfig.midtransClientKey)
-    return payMidtrans({ amount, title });
+// Bayar non-QuPay.
+//
+// Hasilnya tiga macam, dan pemanggil WAJIB membedakan ketiganya:
+//   false                     → batal / gagal
+//   true                      → pengguna menyatakan sudah bayar (QRIS manual);
+//                               pemanggil masih harus menutup sesinya sendiri
+//   { server: true, amount }  → server sudah menutup sesi & mencatat transaksi;
+//                               pemanggil TIDAK boleh memanggil DB.checkout()
+export async function payQRIS({ amount, title = "Pembayaran QRIS", sessionId = null } = {}) {
+  // Tanpa sessionId (mis. top up saldo) Midtrans tidak dipakai: nominalnya
+  // tidak bisa diturunkan dari sesi mana pun, jadi tidak ada yang bisa
+  // divalidasi server.
+  if (paymentConfig.provider === "midtrans" && sessionId) {
+    const hasil = await payMidtrans({ sessionId, title });
+    if (hasil !== MUNDUR) return hasil;
+  }
   if (paymentConfig.qrisStatic) return qrisMerchant({ amount, title });
   return simulasiQRIS({ amount, title });
 }
@@ -74,16 +100,123 @@ function qrisMerchant({ amount, title }) {
   });
 }
 
-// STUB integrasi Midtrans Snap (sandbox). Langkah integrasi nyata:
-// 1) SERVER (wajib): buat token via Snap API `POST https://app.sandbox.midtrans.com/snap/v1/transactions`
-//    memakai Server Key (jangan pernah di client) → response berisi `token`.
-// 2) CLIENT: muat script https://app.sandbox.midtrans.com/snap/snap.js
-//    dengan atribut data-client-key = paymentConfig.midtransClientKey.
-// 3) Panggil window.snap.pay(token, { onSuccess, onPending, onError, onClose }).
-// 4) Tandai lunas HANYA setelah HTTP notification/webhook Midtrans diverifikasi di server.
-async function payMidtrans({ amount, title }) {
-  toast("Midtrans belum tersambung ke server token — memakai mode simulasi.");
-  return simulasiQRIS({ amount, title });
+// ============================================================
+// Jalur Midtrans
+// ============================================================
+
+// Penanda "jalur ini tidak bisa dipakai, silakan mundur". Sengaja Symbol, bukan
+// null/false — supaya tidak mungkin tertukar dengan "pembayaran dibatalkan".
+const MUNDUR = Symbol("midtrans-tidak-tersedia");
+
+// Saklar server ditanyakan sekali per muat halaman.
+let cfgServer;
+async function konfigServer() {
+  if (cfgServer !== undefined) return cfgServer;
+  try {
+    const res = await fetch(paymentConfig.apiBase + "/payment-config");
+    cfgServer = res.ok ? await res.json() : { enabled: false };
+  } catch (e) {
+    // Function mati, situs Netlify ditangguhkan, atau perangkat offline —
+    // ketiganya sama artinya bagi pengguna: pakai jalur QRIS saja.
+    console.warn("payment-config tidak terjangkau:", e.message);
+    cfgServer = { enabled: false };
+  }
+  return cfgServer;
+}
+
+let snapReady;
+function loadSnap(cfg) {
+  if (snapReady) return snapReady;
+  snapReady = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = cfg.snapUrl;
+    s.setAttribute("data-client-key", cfg.clientKey);
+    s.onload = resolve;
+    // Penyebab tersering: domain Midtrans belum masuk CSP di app.html —
+    // popupnya lalu diam total tanpa pesan galat apa pun.
+    s.onerror = () => { snapReady = null; reject(new Error("Gagal memuat Snap")); };
+    document.head.append(s);
+  });
+  return snapReady;
+}
+
+async function idTokenFirebase() {
+  const [{ getApps }, a] = await Promise.all([
+    import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"),
+    import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"),
+  ]);
+  const app = getApps()[0];
+  const u = app && a.getAuth(app).currentUser;
+  if (!u) throw new Error("Belum masuk");
+  return u.getIdToken();
+}
+
+async function payMidtrans({ sessionId, title }) {
+  // Mode DEMO tidak punya Firestore sama sekali — tidak ada yang bisa ditunggu.
+  if (DB?.mode !== "firebase" || !DB._db) return MUNDUR;
+
+  const cfg = await konfigServer();
+  if (!cfg.enabled) return MUNDUR;
+
+  let orderId, token, amount;
+  try {
+    await loadSnap(cfg);
+    const idToken = await idTokenFirebase();
+    const res = await fetch(paymentConfig.apiBase + "/create-payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + idToken },
+      body: JSON.stringify({ sessionId }),        // ← nominal TIDAK dikirim
+    });
+    if (res.status === 503) { cfgServer = { enabled: false }; return MUNDUR; }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    ({ orderId, token, amount } = await res.json());
+    if (!token) throw new Error("token kosong");
+  } catch (e) {
+    // Apa pun yang gagal SEBELUM Snap terbuka masih aman untuk dimundurkan:
+    // belum ada uang yang berpindah. Setelah Snap terbuka, tidak lagi.
+    console.warn("Midtrans tidak bisa dipakai:", e.message);
+    toast("Gateway sedang tidak bisa dipakai — memakai QRIS merchant.");
+    return MUNDUR;
+  }
+
+  return new Promise((resolve) => {
+    let selesai = false;
+    const tutup = (hasil) => { if (!selesai) { selesai = true; resolve(hasil); } };
+
+    // Kebenaran datang dari webhook lewat dokumen orders, BUKAN dari callback
+    // Snap: pengguna bisa menutup browser tepat setelah membayar.
+    const berhenti = tungguLunas(orderId, (status) => {
+      if (status === "paid") { berhenti(); tutup({ server: true, amount }); }
+      if (status === "failed" || status === "mismatch") { berhenti(); tutup(false); }
+    });
+
+    window.snap.pay(token, {
+      onSuccess: () => toast("Pembayaran diterima, menunggu konfirmasi…"),
+      onPending: () => toast("Menunggu pembayaran diselesaikan…"),
+      onError: () => { berhenti(); toast("Pembayaran gagal", "err"); tutup(false); },
+      onClose: () => {
+        // Popup ditutup ≠ tidak jadi bayar: notifikasi webhook biasanya datang
+        // beberapa detik setelahnya. Beri tenggang sebelum menyerah, dan biarkan
+        // order tetap 'pending' — reconcile yang membereskan sisanya.
+        setTimeout(() => { berhenti(); tutup(false); }, 20000);
+      },
+    });
+  });
+}
+
+// Langganan satu dokumen order. Mengembalikan fungsi penghenti.
+function tungguLunas(orderId, cb) {
+  let unsub = null, batal = false;
+  (async () => {
+    const fs = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    if (batal) return;
+    unsub = fs.onSnapshot(
+      fs.doc(DB._db, "orders", orderId),
+      (snap) => cb(snap.data()?.status),
+      (e) => console.warn("Langganan order gagal:", e.code || e.message),
+    );
+  })();
+  return () => { batal = true; unsub && unsub(); };
 }
 
 // SIMULASI: modal QR palsu + tombol konfirmasi manual.
