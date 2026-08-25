@@ -55,7 +55,7 @@ export async function payQRIS({ amount, title = "Pembayaran QRIS", sessionId = n
   // Tanpa sessionId (mis. top up saldo) Midtrans tidak dipakai: nominalnya
   // tidak bisa diturunkan dari sesi mana pun, jadi tidak ada yang bisa
   // divalidasi server.
-  if (paymentConfig.provider === "midtrans" && sessionId) {
+  if (sessionId) {
     const hasil = await payMidtrans({ sessionId, title });
     if (hasil !== MUNDUR) return hasil;
   }
@@ -158,6 +158,15 @@ async function idTokenFirebase() {
 // muatannya, jadi keduanya memakai fungsi ini supaya tidak ada dua salinan
 // logika tunggu-lunas yang bisa berbeda diam-diam.
 async function lewatGateway({ endpoint, muatan }) {
+  // SAKLAR KLIEN diperiksa DI SINI, bukan di masing-masing pemanggil.
+  //
+  // Dulu hanya payQRIS() yang memeriksanya, sementara topUpGateway() langsung
+  // menembak server. Selama saklar server menyala untuk sandbox, itu berarti
+  // top up di app produksi akan membuka Snap SANDBOX — saldo bertambah tanpa
+  // uang sungguhan masuk. Satu pintu untuk kedua jalur menutup seluruh kelas
+  // kesalahan itu.
+  if (paymentConfig.provider !== "midtrans") return MUNDUR;
+
   // Mode DEMO tidak punya Firestore sama sekali — tidak ada yang bisa ditunggu.
   if (DB?.mode !== "firebase" || !DB._db) return MUNDUR;
 
@@ -229,7 +238,7 @@ async function lewatGateway({ endpoint, muatan }) {
 export function siapkanGateway() {
   (async () => {
     try {
-      if (DB?.mode !== "firebase") return;
+      if (paymentConfig.provider !== "midtrans" || DB?.mode !== "firebase") return;
       const cfg = await konfigServer();
       if (cfg.enabled) await loadSnap(cfg);
     } catch { /* percepatan saja */ }
