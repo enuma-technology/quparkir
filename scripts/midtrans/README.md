@@ -19,6 +19,7 @@ npm run midtrans:test
 |---|---|
 | `uji-cors.mjs` (25 kasus) | Preflight OPTIONS tiap endpoint: tidak melempar, 204, mengizinkan `localhost:5000` & `quparkir.web.app`, menolak origin asing. Tidak perlu emulator jalan. |
 | `uji-token.mjs` (11 kasus) | Verifikasi token: klaim (aud, iss, exp, iat, sub) **dan** tanda tangan RS256 terhadap token Firebase sungguhan — termasuk tanda tangan yang diubah dan serangan tukar-isi. Bagian RS256 butuh `.env` + jaringan; dilewati otomatis kalau tidak ada. |
+| `uji-order.mjs` (13 kasus) | Apa yang DIKIRIM ke Midtrans: header `X-Override-Notification`, nominal, bentuk `order_id`, batas 10rb–1jt, tanpa token 401, saklar mati 503. `fetch` diganti penadah — tidak ada panggilan sungguhan. |
 | `uji-webhook.mjs` (30 kasus) | Tanda tangan palsu ditolak 403 · notifikasi ganda tidak mencatat transaksi/saldo dua kali · nominal tidak cocok tidak meluluskan pembayaran · sesi ditutup, slot kembali, `activeSession` dilepas · top up menambah saldo lewat webhook, bukan lewat tombol |
 | `uji-saldo.mjs` (21 kasus) | Bayar parkir pakai saldo: tarif dihitung server · saldo kurang tidak memotong sebagian · bayar dua kali ditolak 409 · sesi orang lain 403 · tanpa token 401 |
 
@@ -33,6 +34,20 @@ idempotensi, dan seluruh isi `runTransaction()`.
 bertanda tangan, jadi token uji bisa dirakit tanpa kunci apa pun. Akun ujinya
 tetap harus dibuat lebih dulu — Auth emulator menolak token milik pengguna yang
 tidak ada, dan itu justru salah satu hal yang ingin dibuktikan.
+
+## Kenapa alamat webhook dikirim per transaksi
+
+Top up sungguhan pertama (Rp 10.000 lewat simulator) **berhasil dibayar tapi
+saldonya tidak bertambah**. Ordernya menggantung `pending` tanpa satu pun
+notifikasi dan tanpa satu pun galat di sisi kita: Midtrans tidak punya alamat
+untuk memberitahu, karena Notification URL di dasbor belum diisi.
+
+Sekarang `create-payment` dan `create-topup` menyertakan header
+`X-Override-Notification` berisi URL webhook kita, jadi alamatnya ikut
+tercatat di kode dan versi. Pengaturan dasbor jadi cadangan, bukan syarat.
+`rekonsiliasi-lokal.mjs` ada untuk membereskan order yang telanjur
+menggantung: statusnya ditanyakan ke Midtrans lalu diterapkan lewat
+`terapkanStatus()` yang sama persis dengan yang dipakai webhook.
 
 ## Kenapa verifikasi token ditulis sendiri
 

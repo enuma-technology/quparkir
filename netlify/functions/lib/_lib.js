@@ -54,7 +54,10 @@ export { FieldValue };
 // Webhook SENGAJA tidak ikut dimatikan saklar ini: kalau saklar dimatikan
 // selagi ada uang yang sudah telanjur dibayar, notifikasinya tetap harus
 // diterima dan sesinya tetap harus ditutup.
-export const MIDTRANS_AKTIF = process.env.MIDTRANS_ENABLED === "true";
+// Fungsi, bukan konstanta: nilai yang dibekukan saat modul dimuat tidak bisa
+// diuji sama sekali (kontainer yang sama dipakai ulang), dan saklar adalah hal
+// terakhir yang boleh sulit diperiksa.
+export const midtransAktif = () => process.env.MIDTRANS_ENABLED === "true";
 
 const isProd = process.env.MIDTRANS_IS_PRODUCTION === "true";
 
@@ -72,6 +75,20 @@ export const MIDTRANS = {
       ? `https://api.midtrans.com/v2/${encodeURIComponent(orderId)}/status`
       : `https://api.sandbox.midtrans.com/v2/${encodeURIComponent(orderId)}/status`,
 };
+
+// URL webhook, dikirim per transaksi lewat header X-Override-Notification.
+//
+// Kenapa tidak mengandalkan dasbor Midtrans saja: pembayaran pertama yang
+// sungguhan (25 Agu 2026, top up Rp 10.000 lewat simulator) BERHASIL tapi
+// saldonya tidak pernah bertambah — Midtrans tidak punya alamat untuk
+// memberitahu kita, karena Notification URL di dasbor belum diisi. Ordernya
+// menggantung 'pending' tanpa satu pun jejak galat di sisi kita.
+//
+// Dengan header ini, alamat webhook ikut tercatat di kode dan versi, dan
+// pengaturan dasbor jadi cadangan — bukan syarat.
+export const WEBHOOK_URL =
+  process.env.WEBHOOK_URL ||
+  (process.env.URL || "https://quparkir-pay.netlify.app") + "/.netlify/functions/midtrans-webhook";
 
 // Midtrans memakai Basic Auth: username = Server Key, password kosong.
 export const authHeader = () =>

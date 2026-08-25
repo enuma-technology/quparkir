@@ -8,7 +8,7 @@
 // satu pun kunci yang perlu disalin tangan ke dalam repo, dan saklarnya cukup
 // satu tempat — env var di Netlify. Repo ini publik.
 // ============================================================
-import { MIDTRANS, MIDTRANS_AKTIF, corsHeaders, json, preflight } from "./lib/_lib.js";
+import { MIDTRANS, midtransAktif, corsHeaders, json, preflight } from "./lib/_lib.js";
 
 export default async (req) => {
   if (req.method === "OPTIONS") return preflight(req);
@@ -22,7 +22,7 @@ export default async (req) => {
   // di Netlify baru terbaca function setelah deploy, jadi tiap tebakan yang
   // meleset berharga satu deploy (15 kredit).
   const siap = {
-    saklar: MIDTRANS_AKTIF,
+    saklar: midtransAktif(),
     serverKey: !!process.env.MIDTRANS_SERVER_KEY,
     clientKey: !!clientKey,
   };

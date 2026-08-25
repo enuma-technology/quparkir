@@ -12,7 +12,7 @@
 // ditagihkan, dan webhook menolak kalau gross_amount yang dibayar berbeda.
 // ============================================================
 import {
-  db, FieldValue, MIDTRANS, MIDTRANS_AKTIF, authHeader,
+  db, FieldValue, MIDTRANS, midtransAktif, authHeader, WEBHOOK_URL,
   json, preflight, uidDariToken,
 } from "./lib/_lib.js";
 
@@ -24,7 +24,7 @@ export default async (req) => {
   if (req.method === "OPTIONS") return preflight(req);
   if (req.method !== "POST") return json(req, 405, { error: "method_not_allowed" });
 
-  if (!MIDTRANS_AKTIF || !process.env.MIDTRANS_SERVER_KEY)
+  if (!midtransAktif() || !process.env.MIDTRANS_SERVER_KEY)
     return json(req, 503, { error: "midtrans_disabled" });
 
   try {
@@ -73,6 +73,10 @@ export default async (req) => {
         "Content-Type": "application/json",
         Accept: "application/json",
         Authorization: authHeader(),
+        // Alamat webhook untuk transaksi INI. Tanpa ini, Midtrans hanya tahu
+        // alamat yang diisi di dasbor — dan kalau kosong, pembayaran berhasil
+        // tapi tidak ada yang memberitahu kita.
+        "X-Override-Notification": WEBHOOK_URL,
       },
       body: JSON.stringify({
         transaction_details: { order_id: orderId, gross_amount: amount },

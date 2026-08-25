@@ -13,7 +13,7 @@
 // untuk function ini — jalur "admin memanggil manual" di bawah otomatis mati.
 // Itu memang benar; jangan dikira rusak.
 // ============================================================
-import { db, MIDTRANS, MIDTRANS_AKTIF, authHeader, terapkanStatus, adalahAdmin, uidDariToken, json, preflight } from "./lib/_lib.js";
+import { db, MIDTRANS, midtransAktif, authHeader, terapkanStatus, adalahAdmin, uidDariToken, json, preflight } from "./lib/_lib.js";
 
 const BATAS_MENIT = 10;
 const MAKS = 50;
@@ -31,7 +31,7 @@ export default async (req) => {
     if (!(await adalahAdmin(uid))) return json(req, 403, { error: "forbidden" });
   }
 
-  if (!MIDTRANS_AKTIF || !process.env.MIDTRANS_SERVER_KEY)
+  if (!midtransAktif() || !process.env.MIDTRANS_SERVER_KEY)
     return json(req, 503, { error: "midtrans_disabled" });
 
   const batas = new Date(Date.now() - BATAS_MENIT * 60 * 1000);
