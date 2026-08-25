@@ -18,6 +18,7 @@ npm run midtrans:test
 | Berkas | Yang dibuktikan |
 |---|---|
 | `uji-cors.mjs` (25 kasus) | Preflight OPTIONS tiap endpoint: tidak melempar, 204, mengizinkan `localhost:5000` & `quparkir.web.app`, menolak origin asing. Tidak perlu emulator jalan. |
+| `uji-token.mjs` (11 kasus) | Verifikasi token: klaim (aud, iss, exp, iat, sub) **dan** tanda tangan RS256 terhadap token Firebase sungguhan — termasuk tanda tangan yang diubah dan serangan tukar-isi. Bagian RS256 butuh `.env` + jaringan; dilewati otomatis kalau tidak ada. |
 | `uji-webhook.mjs` (30 kasus) | Tanda tangan palsu ditolak 403 · notifikasi ganda tidak mencatat transaksi/saldo dua kali · nominal tidak cocok tidak meluluskan pembayaran · sesi ditutup, slot kembali, `activeSession` dilepas · top up menambah saldo lewat webhook, bukan lewat tombol |
 | `uji-saldo.mjs` (21 kasus) | Bayar parkir pakai saldo: tarif dihitung server · saldo kurang tidak memotong sebagian · bayar dua kali ditolak 409 · sesi orang lain 403 · tanpa token 401 |
 
@@ -32,6 +33,19 @@ idempotensi, dan seluruh isi `runTransaction()`.
 bertanda tangan, jadi token uji bisa dirakit tanpa kunci apa pun. Akun ujinya
 tetap harus dibuat lebih dulu — Auth emulator menolak token milik pengguna yang
 tidak ada, dan itu justru salah satu hal yang ingin dibuktikan.
+
+## Kenapa verifikasi token ditulis sendiri
+
+`firebase-admin/auth` menarik `jwks-rsa` → `jose`, dan rantai itu dua kali
+meruntuhkan function ini. Yang kedua paling jahat: pemuatan modulnya gagal di
+dalam blok `try`, jadi terlaporkan sebagai "token ditolak" — gejalanya sama
+persis dengan token yang memang salah. Token yang benar pun ditolak 401, setiap
+pembayaran mundur diam-diam ke QRIS merchant, dan tidak ada satu pesan pun yang
+menunjuk sebab sebenarnya.
+
+Sekarang `uidDariToken()` memakai `crypto` bawaan Node: mengambil sertifikat
+publik Google, mencocokkan `kid`, memverifikasi RS256, lalu memeriksa aud, iss,
+exp, iat, dan sub. Tidak ada dependensi yang bisa gagal dimuat.
 
 ## Kenapa `uji-cors.mjs` ada
 

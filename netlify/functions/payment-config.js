@@ -38,6 +38,11 @@ export default async (req) => {
       // Klien memakai bendera ini untuk tahu jalur server tersedia tanpa
       // harus menembak endpoint-nya dulu lalu gagal.
       walletServer: true,
+      // Versi Node runtime. Bukan hiasan: NODE_VERSION di netlify.toml bisa
+      // kalah oleh pengaturan dasbor, dan versi yang salah pernah membunuh
+      // seluruh function lewat rantai jose (lihat catatan di netlify.toml).
+      // Satu curl ke endpoint ini sekarang menjawabnya tanpa membuka dasbor.
+      runtime: process.version,
       clientKey,
       snapUrl: MIDTRANS.snapUrl,
       isProduction: MIDTRANS.isProd,

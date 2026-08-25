@@ -13,9 +13,10 @@
 // keduanya dicampur dalam satu berkas, Netlify hanya menjalankan salah satu
 // dan galatnya tidak menyebut penyebabnya.
 // ============================================================
+import crypto from "node:crypto";
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-// firebase-admin/auth SENGAJA TIDAK diimpor di atas — lihat uidDariToken().
+// firebase-admin/auth TIDAK dipakai sama sekali — lihat uidDariToken().
 
 // "\n" di environment variable tersimpan sebagai dua karakter biasa, bukan
 // baris baru. Ini penyebab kegagalan init paling sering.
@@ -124,23 +125,91 @@ export function hitungTarif(type, ms) {
 export const SALDO_DEFAULT = 25000;
 
 // ---------- Identitas ----------
-// uid diambil dari token Firebase yang diverifikasi, TIDAK PERNAH dari body.
+//
+// Token Firebase diverifikasi SENDIRI di sini, memakai crypto bawaan Node —
+// bukan lewat admin.auth().verifyIdToken().
+//
+// Kenapa: firebase-admin/auth menarik jwks-rsa → jose, dan rantai itu sudah
+// dua kali meruntuhkan function ini di Netlify. Yang kedua paling jahat:
+// pemuatan modulnya gagal DI DALAM blok try, sehingga terlaporkan sebagai
+// "token ditolak" — gejalanya sama persis dengan token yang memang salah,
+// dan setiap pembayaran mundur diam-diam ke QRIS merchant. Token yang benar
+// pun ditolak, dan tidak ada satu pesan pun yang menunjuk sebab sebenarnya.
+//
+// Yang diperiksa di bawah adalah seluruh syarat yang diperiksa Firebase:
+// tanda tangan RS256 terhadap sertifikat publik Google yang cocok kid-nya,
+// alg, aud, iss, exp, iat, dan sub. Melewatkan satu saja membuat verifikasi
+// ini teater belaka — token buatan siapa pun akan lolos.
+const SERTIFIKAT_URL =
+  "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
+
+let sertifikat = null, sertifikatKedaluwarsa = 0;
+
+async function ambilSertifikat() {
+  // Kontainer Netlify dipakai ulang, jadi cache ini bertahan antar-permintaan.
+  // Google memutar kuncinya harian; max-age dari responsnya yang menentukan,
+  // bukan angka yang dikarang sendiri.
+  if (sertifikat && Date.now() < sertifikatKedaluwarsa) return sertifikat;
+  const res = await fetch(SERTIFIKAT_URL);
+  if (!res.ok) throw new Error("sertifikat_google_http_" + res.status);
+  const cc = res.headers.get("cache-control") || "";
+  const maks = Number((cc.match(/max-age=(\d+)/) || [])[1] || 3600);
+  sertifikat = await res.json();
+  sertifikatKedaluwarsa = Date.now() + maks * 1000;
+  return sertifikat;
+}
+
+const dariB64url = (t) => Buffer.from(t.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+
+// Mengembalikan uid, atau null bila token tidak sah. Alasannya dicatat ke log
+// dengan kode pendek supaya bisa dibedakan di dasbor Netlify.
 export async function uidDariToken(req) {
   const raw = req.headers.get("authorization") || "";
-  const idToken = raw.replace(/^Bearer\s+/i, "").trim();
-  if (!idToken) return null;
+  const token = raw.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+
+  const proyek = process.env.FB_PROJECT_ID;
+  const bagian = token.split(".");
+  if (bagian.length !== 3) { console.warn("Token ditolak: bukan_jwt"); return null; }
+
+  let kepala, isi;
   try {
-    // Dimuat saat dibutuhkan saja, bukan di atas berkas. firebase-admin/auth
-    // menarik jwks-rsa → jose (ESM-only) — rantai yang persis meruntuhkan
-    // deploy 25 Agu 2026 di Node 20 (lihat catatan NODE_VERSION di
-    // netlify.toml). Dengan begini midtrans-webhook dan payment-config tidak
-    // pernah menyentuh rantai itu sama sekali: apa pun yang terjadi pada
-    // verifikasi token, notifikasi pembayaran tetap bisa diterima.
-    const { getAuth } = await import("firebase-admin/auth");
-    const { uid } = await getAuth(app).verifyIdToken(idToken);
-    return uid;
+    kepala = JSON.parse(dariB64url(bagian[0]).toString("utf8"));
+    isi = JSON.parse(dariB64url(bagian[1]).toString("utf8"));
+  } catch { console.warn("Token ditolak: rusak"); return null; }
+
+  const sekarang = Math.floor(Date.now() / 1000);
+  const TOLERANSI = 60;   // jam server tidak identik dengan jam peramban
+
+  if (isi.aud !== proyek) { console.warn("Token ditolak: aud_salah"); return null; }
+  if (isi.iss !== "https://securetoken.google.com/" + proyek) { console.warn("Token ditolak: iss_salah"); return null; }
+  if (!isi.sub || typeof isi.sub !== "string" || isi.sub.length > 128) { console.warn("Token ditolak: sub_kosong"); return null; }
+  if (!(isi.exp > sekarang - TOLERANSI)) { console.warn("Token ditolak: kedaluwarsa"); return null; }
+  if (!(isi.iat <= sekarang + TOLERANSI)) { console.warn("Token ditolak: belum_berlaku"); return null; }
+
+  // Auth Emulator menerbitkan token TANPA tanda tangan (alg "none"). Jalur ini
+  // hanya hidup bila FIREBASE_AUTH_EMULATOR_HOST diset, dan variabel itu tidak
+  // pernah ada di Netlify — dipakai uji lokal saja.
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) return isi.sub;
+
+  if (kepala.alg !== "RS256") { console.warn("Token ditolak: alg_" + kepala.alg); return null; }
+  if (!kepala.kid) { console.warn("Token ditolak: tanpa_kid"); return null; }
+
+  try {
+    const semua = await ambilSertifikat();
+    const pem = semua[kepala.kid];
+    if (!pem) { console.warn("Token ditolak: kid_tak_dikenal"); return null; }
+    const publik = new crypto.X509Certificate(pem).publicKey;
+    const sah = crypto.verify(
+      "RSA-SHA256",
+      Buffer.from(bagian[0] + "." + bagian[1], "utf8"),
+      publik,
+      dariB64url(bagian[2]),
+    );
+    if (!sah) { console.warn("Token ditolak: tanda_tangan"); return null; }
+    return isi.sub;
   } catch (e) {
-    console.warn("Token ditolak:", e.code || e.message);
+    console.warn("Token ditolak: galat_verifikasi", e.message);
     return null;
   }
 }

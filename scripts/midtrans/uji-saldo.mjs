@@ -12,10 +12,10 @@
 //   node scripts/midtrans/uji-saldo.mjs                            (terminal 2)
 // ============================================================
 process.env.FIRESTORE_EMULATOR_HOST ||= "127.0.0.1:8080";
-// Auth emulator dipakai supaya uidDariToken() yang SUNGGUHAN ikut diuji —
-// termasuk penolakan permintaan tanpa token. Saat FIREBASE_AUTH_EMULATOR_HOST
-// diset, firebase-admin menerima token tak bertanda tangan, jadi token uji
-// bisa dirakit di sini tanpa kunci apa pun.
+// FIREBASE_AUTH_EMULATOR_HOST membuat uidDariToken() melewati pemeriksaan
+// tanda tangan (lihat _lib.js), sehingga token uji bisa dirakit di sini tanpa
+// kunci apa pun. Klaimnya tetap diperiksa penuh — aud, iss, exp, iat, sub —
+// dan jalur tanda tangan RS256 diuji terpisah di uji-token.mjs.
 process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
 process.env.FB_PROJECT_ID ||= "quparkir-uji-saldo";
 
@@ -41,17 +41,6 @@ async function bersihkanEmulator(proyek) {
   if (!res.ok) throw new Error("Gagal membersihkan emulator: HTTP " + res.status);
 }
 await bersihkanEmulator(PROYEK);
-
-// Auth emulator menolak token milik akun yang tidak ada ("auth/user-not-found"),
-// jadi akun ujinya dibuat dulu. Ini juga membuat uji ini jujur: token yang
-// menunjuk pengguna fiktif memang HARUS ditolak.
-{
-  const { app } = await import("../../netlify/functions/lib/_lib.js");
-  const { getAuth } = await import("firebase-admin/auth");
-  for (const uid of [UID, LAIN]) {
-    try { await getAuth(app).createUser({ uid }); } catch { /* sudah ada */ }
-  }
-}
 
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 function tokenUntuk(uid) {
