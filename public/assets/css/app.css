@@ -460,7 +460,11 @@ label.field span{display:block;font-size:.8rem;font-weight:700;margin-bottom:6px
 .skel-provider{height:62px;border-radius:16px}
 
 /* toast */
-.toast{position:fixed;left:50%;bottom:120px;transform:translateX(-50%) translateY(20px);z-index:60;
+/* z-index HARUS di atas .modal-bg (70). Toast paling sering muncul justru saat
+   modal terbuka — validasi nominal top up, pembayaran dibatalkan, saldo tidak
+   cukup — dan dengan z-index 60 ia tertimbun lapisan gelap-blur modal: pesannya
+   tetap dirender, hanya tidak terlihat sama sekali. */
+.toast{position:fixed;left:50%;bottom:120px;transform:translateX(-50%) translateY(20px);z-index:90;
   background:#0b1b4d;color:#fff;padding:12px 18px;border-radius:14px;font-size:.86rem;font-weight:600;box-shadow:0 12px 30px rgba(0,0,0,.4);
   opacity:0;pointer-events:none;transition:.25s;max-width:88vw}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}

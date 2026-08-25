@@ -102,7 +102,7 @@ function topUpModal(u) {
     chips,
     h("label.field", {}, [h("span", { text: `Nominal lain (${rupiah(TOPUP_MIN)} – ${rupiah(TOPUP_MAX)})` }), inp]),
     h("button.btn", { onclick: submit }, "Lanjut Bayar"),
-    h("p.center.muted", { style: "margin-top:10px", html: "<small>Pembayaran diproses lewat QRIS</small>" }),
+    h("p.center.muted", { style: "margin-top:10px", html: "<small>Pembayaran diproses lewat QRIS & e-wallet</small>" }),
   ]));
 }
 
