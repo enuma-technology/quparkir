@@ -15,7 +15,7 @@
 //
 // choosePayment() → pilih metode; payQRIS() → proses bayar non-QuPay.
 // ============================================================
-import { h, $, rupiah, modal, toast } from "./util.js";
+import { h, $, rupiah, modal, toast, tunggu } from "./util.js";
 import { renderQR } from "./qr.js";
 import { toDynamic } from "./qris.js";
 import { paymentConfig } from "./config.js";
@@ -164,6 +164,11 @@ async function lewatGateway({ endpoint, muatan }) {
   const cfg = await konfigServer();
   if (!cfg.enabled) return MUNDUR;
 
+  // Menyiapkan pembayaran butuh tiga perjalanan ke jaringan: snap.js, token
+  // Firebase, lalu order ke server kita. Di jaringan seluler itu beberapa
+  // detik — tanpa penanda, layarnya tampak menggantung.
+  const tutupTunggu = tunggu("Menyiapkan pembayaran…", "Menghubungkan ke gateway pembayaran");
+
   let orderId, token, amount;
   try {
     await loadSnap(cfg);
@@ -183,6 +188,10 @@ async function lewatGateway({ endpoint, muatan }) {
     console.warn("Gateway tidak bisa dipakai:", e.message);
     toast("Gateway sedang tidak bisa dipakai — memakai QRIS merchant.");
     return MUNDUR;
+  } finally {
+    // Ditutup di finally, bukan setelah snap.pay(): kalau ada galat di
+    // tengah, layar menunggu tidak boleh tertinggal menutupi seluruh app.
+    tutupTunggu();
   }
 
   return new Promise((resolve) => {
@@ -210,6 +219,23 @@ async function lewatGateway({ endpoint, muatan }) {
   });
 }
 
+// Pemanasan. Dipanggil saat halaman yang mungkin berujung pembayaran dibuka
+// (Akun, Status), jauh sebelum tombol ditekan — supaya snap.js sudah termuat
+// dan konfigurasi sudah diketahui. Tanpa ini, ketiga perjalanan jaringan baru
+// dimulai SETELAH pengguna menekan Bayar, dan popup terasa lambat muncul.
+//
+// Gagal diam-diam dengan sengaja: ini hanya percepatan, bukan syarat. Kalau
+// gagal, jalur normal tetap mencoba lagi nanti.
+export function siapkanGateway() {
+  (async () => {
+    try {
+      if (DB?.mode !== "firebase") return;
+      const cfg = await konfigServer();
+      if (cfg.enabled) await loadSnap(cfg);
+    } catch { /* percepatan saja */ }
+  })();
+}
+
 const payMidtrans = ({ sessionId }) =>
   lewatGateway({ endpoint: "/create-payment", muatan: { sessionId } });
 
@@ -235,6 +261,7 @@ export async function bayarSaldo({ sessionId }) {
   const cfg = await konfigServer();
   if (cfg.walletServer === false) return { mundur: true };
 
+  const tutupTunggu = tunggu("Memproses pembayaran…", "Memotong saldo QuPay dan menutup sesi parkir");
   try {
     const idToken = await idTokenFirebase();
     const res = await fetch(paymentConfig.apiBase + "/wallet-checkout", {
@@ -253,6 +280,8 @@ export async function bayarSaldo({ sessionId }) {
   } catch (e) {
     console.warn("wallet-checkout tidak bisa dipakai:", e.message);
     return { mundur: true };
+  } finally {
+    tutupTunggu();
   }
 }
 

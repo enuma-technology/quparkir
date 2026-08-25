@@ -4,9 +4,13 @@ import { Auth } from "../auth.js";
 import { pageHeader } from "../parts.js";
 import { go } from "../router.js";
 import { renderQR } from "../qr.js";
-import { choosePayment, payQRIS, bayarSaldo } from "../pay.js";
+import { choosePayment, payQRIS, bayarSaldo, siapkanGateway } from "../pay.js";
 
 export default async function statusPage(view) {
+  // Panaskan gateway sejak halaman dibuka: muat snap.js & konfigurasi sebelum
+  // tombol bayar ditekan. Tidak di-await — murni percepatan.
+  siapkanGateway();
+
   const u = Auth.current();
   const body = h("div.pad");
   view.append(pageHeader("Status Parkir", { back: "#/home" }), body);

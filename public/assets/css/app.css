@@ -480,6 +480,18 @@ label.field span{display:block;font-size:.8rem;font-weight:700;margin-bottom:6px
 .modal h3{font-size:1.1rem;margin-bottom:4px}
 .modal .grab{width:42px;height:5px;border-radius:9px;background:var(--line);margin:0 auto 14px}
 
+/* ---------- layar menunggu ---------- */
+/* Dipakai saat app menyiapkan pembayaran: memuat snap.js, meminta token, atau
+   memotong saldo di server. Rentang itu bisa beberapa detik di jaringan
+   seluler, dan tanpa penanda apa pun layarnya tampak menggantung — pengguna
+   menekan tombolnya berkali-kali dan mengira app-nya rusak. */
+.tunggu{display:flex;flex-direction:column;align-items:center;gap:14px;padding:26px 18px 22px}
+.tunggu .putar{width:38px;height:38px;border-radius:50%;
+  border:3px solid var(--line);border-top-color:var(--blue-600);animation:spin .8s linear infinite}
+.tunggu .pesan{font-weight:700;font-size:.94rem;text-align:center}
+.tunggu .sub{font-size:.76rem;color:var(--muted);text-align:center;max-width:26ch;line-height:1.5}
+@media (prefers-reduced-motion:reduce){.tunggu .putar{animation-duration:2.4s}}
+
 /* ---------- struk pembayaran ---------- */
 /* Dibuat menyerupai struk kertas: kop, garis putus-putus, angka rata kanan,
    dan gerigi sobek di bawah. Latarnya sengaja --app-bg (bukan --card) supaya

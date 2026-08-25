@@ -77,6 +77,28 @@ export function modal(title, bodyNode, { okText } = {}) {
   });
 }
 
+// Layar menunggu non-interaktif. Mengembalikan fungsi penutup.
+//
+// Sengaja TIDAK bisa ditutup dengan mengetuk latar: yang sedang berjalan di
+// baliknya adalah pembuatan order pembayaran, dan menutupnya di tengah jalan
+// hanya membuat pengguna mengira sudah batal padahal ordernya sudah terbit.
+export function tunggu(pesan = "Memproses…", sub = "") {
+  const host = $("#modalHost");
+  const card = h(".modal", {}, [
+    h(".tunggu", {}, [
+      h(".putar"),
+      h(".pesan", { text: pesan }),
+      sub ? h(".sub", { text: sub }) : null,
+    ]),
+  ]);
+  const bg = h(".modal-bg", {}, [card]);
+  host.innerHTML = "";
+  host.append(bg);
+  // Hanya membersihkan kalau layar ini MASIH yang tampil — kalau sesuatu yang
+  // lain sudah menggantikannya, jangan ikut menghapusnya.
+  return () => { if (bg.isConnected) host.innerHTML = ""; };
+}
+
 export const fmtDate = (ts) => new Date(ts).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
 export const uid = () => Math.random().toString(36).slice(2, 10);
 

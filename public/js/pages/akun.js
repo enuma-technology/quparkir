@@ -3,7 +3,7 @@ import { DB, MODE } from "../data.js";
 import { Auth } from "../auth.js";
 import { appHeader } from "../parts.js";
 import { go, render } from "../router.js";
-import { payQRIS, topUpGateway } from "../pay.js";
+import { payQRIS, topUpGateway, siapkanGateway } from "../pay.js";
 
 const ROLES = ["pelanggan", "petugas", "admin"];
 const PROVIDER = { google: "Google", email: "Email", anonymous: "Tamu" };
@@ -130,6 +130,10 @@ function roleBar(u) {
 }
 
 export default async function akunPage(view) {
+  // Panaskan gateway sejak halaman dibuka: muat snap.js & konfigurasi sebelum
+  // tombol bayar ditekan. Tidak di-await — murni percepatan.
+  siapkanGateway();
+
   const u = Auth.current();
   const bal = await Promise.resolve(DB.wallet.get(u.uid));
 
