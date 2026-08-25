@@ -15,7 +15,7 @@
 // ============================================================
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { getAuth } from "firebase-admin/auth";
+// firebase-admin/auth SENGAJA TIDAK diimpor di atas — lihat uidDariToken().
 
 // "\n" di environment variable tersimpan sebagai dua karakter biasa, bukan
 // baris baru. Ini penyebab kegagalan init paling sering.
@@ -42,7 +42,6 @@ export const app =
   );
 
 export const db = getFirestore(app);
-export const auth = getAuth(app);
 export { FieldValue };
 
 // ---------- SAKLAR ----------
@@ -120,7 +119,14 @@ export async function uidDariToken(req) {
   const idToken = raw.replace(/^Bearer\s+/i, "").trim();
   if (!idToken) return null;
   try {
-    const { uid } = await auth.verifyIdToken(idToken);
+    // Dimuat saat dibutuhkan saja, bukan di atas berkas. firebase-admin/auth
+    // menarik jwks-rsa → jose (ESM-only) — rantai yang persis meruntuhkan
+    // deploy 25 Agu 2026 di Node 20 (lihat catatan NODE_VERSION di
+    // netlify.toml). Dengan begini midtrans-webhook dan payment-config tidak
+    // pernah menyentuh rantai itu sama sekali: apa pun yang terjadi pada
+    // verifikasi token, notifikasi pembayaran tetap bisa diterima.
+    const { getAuth } = await import("firebase-admin/auth");
+    const { uid } = await getAuth(app).verifyIdToken(idToken);
     return uid;
   } catch (e) {
     console.warn("Token ditolak:", e.code || e.message);

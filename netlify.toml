@@ -10,7 +10,15 @@
   functions = "netlify/functions"
 
 [build.environment]
-  NODE_VERSION = "20"
+  # WAJIB 22, jangan diturunkan ke 20.
+  #
+  # firebase-admin → jwks-rsa (CommonJS) → jose@6 (ESM-only). require() atas
+  # modul ESM baru didukung Node 20.19+, dan runtime "20" milik Netlify masih
+  # 20.x yang lebih tua: seluruh function yang menyentuh firebase-admin/auth
+  # mati dengan ERR_REQUIRE_ESM begitu dipanggil. Ini sudah terjadi sungguhan
+  # pada deploy 25 Agu 2026 — /payment-config membalas "This function has
+  # crashed", padahal /hello (yang tidak menyentuh Auth) baik-baik saja.
+  NODE_VERSION = "22"
 
   # Pemindai rahasia Netlify menggagalkan build kalau nilai sebuah env var yang
   # ditandai "secret" ditemukan di dalam repo. FB_PROJECT_ID ("quparkir") dan
