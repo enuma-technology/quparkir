@@ -7,8 +7,14 @@
 <!-- CSP: domain Midtrans & Netlify sudah dicantumkan meski saklar pembayaran
      gateway masih mati. Tanpa itu, saat saklar dinyalakan popup Snap DIAM TOTAL
      tanpa pesan galat apa pun — kegagalan yang paling lama dicari penyebabnya.
-     Mencantumkannya lebih dulu tidak mengaktifkan apa pun. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net https://apis.google.com https://app.sandbox.midtrans.com https://app.midtrans.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://api.qrserver.com https://*.googleusercontent.com https://*.midtrans.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://api.qrserver.com https://quparkir-pay.netlify.app https://app.sandbox.midtrans.com https://app.midtrans.com https://api.sandbox.midtrans.com https://api.midtrans.com http://127.0.0.1:8080 http://127.0.0.1:9099 http://localhost:8080 http://localhost:9099; frame-src https://quparkir.firebaseapp.com https://accounts.google.com https://app.sandbox.midtrans.com https://app.midtrans.com; worker-src 'self'; media-src 'self' blob:; base-uri 'self'; object-src 'none'" />
+     Mencantumkannya lebih dulu tidak mengaktifkan apa pun.
+
+     Dipakai wildcard *.midtrans.com dan *.veritrans.co.id, bukan daftar host
+     satu per satu: snap.js menghubungi beberapa subdomainnya sendiri yang
+     namanya tidak disebutkan di dokumentasi mana pun, dan tiap satu yang
+     terlewat memblokir pembayaran tanpa pesan yang berguna. veritrans.co.id
+     adalah domain lama Midtrans yang masih dipakai sebagian aset Snap. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net https://apis.google.com https://*.midtrans.com https://*.veritrans.co.id; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://api.qrserver.com https://*.googleusercontent.com https://*.midtrans.com https://*.veritrans.co.id; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://api.qrserver.com https://quparkir-pay.netlify.app https://*.midtrans.com https://*.veritrans.co.id http://127.0.0.1:8080 http://127.0.0.1:9099 http://localhost:8080 http://localhost:9099; frame-src https://quparkir.firebaseapp.com https://accounts.google.com https://*.midtrans.com https://*.veritrans.co.id; worker-src 'self'; media-src 'self' blob:; base-uri 'self'; object-src 'none'" />
 <title>Aplikasi QuParkir — Parkir Digital Surakarta</title>
 <meta name="description" content="Aplikasi QuParkir: check-in QR, e-ticket, pembayaran cashless, dan dashboard petugas/admin." />
 <meta name="robots" content="noindex" />
