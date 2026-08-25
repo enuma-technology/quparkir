@@ -112,6 +112,11 @@ export function hitungTarif(type, ms) {
   return type === "mobil" ? 3000 + (jam - 1) * 2000 : 2000 + (jam - 1) * 1000;
 }
 
+// Saldo awal saat field 'wallet' belum ada. HARUS sama dengan DB.wallet.get()
+// di public/js/data.js (`?? 25000`) dan dengan default di firestore.rules —
+// kalau berbeda, saldo tampak 25.000 di layar tapi dianggap 0 saat membayar.
+export const SALDO_DEFAULT = 25000;
+
 // ---------- Identitas ----------
 // uid diambil dari token Firebase yang diverifikasi, TIDAK PERNAH dari body.
 export async function uidDariToken(req) {
@@ -194,6 +199,40 @@ export async function terapkanStatus(b) {
         updatedAt: FieldValue.serverTimestamp(),
       });
       return "nominal_tidak_cocok";
+    }
+
+    // ── Order TOP UP: tidak ada sesi parkir, yang bertambah adalah saldo ──
+    if (o.jenis === "topup") {
+      const userRef = db.collection("users").doc(o.uid);
+      const userSnap = await tx.get(userRef);      // dibaca untuk nama saja
+
+      tx.update(orderRef, {
+        status: "paid",
+        paidAt: FieldValue.serverTimestamp(),
+        midtransTransactionId: b.transaction_id || null,
+        paymentType: b.payment_type || null,
+        notifikasiTerakhir: bersih,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      // increment(), bukan baca-lalu-tulis: dua top up yang selesai nyaris
+      // bersamaan tidak boleh saling menimpa.
+      tx.set(userRef, { wallet: FieldValue.increment(o.amount) }, { merge: true });
+      // Dicatat juga di /topups supaya muncul di riwayat pengguna dan di panel
+      // petugas — bentuknya sama seperti top up manual yang disetujui, hanya
+      // yang menyetujui adalah sistem.
+      tx.set(db.collection("topups").doc(), {
+        uid: o.uid,
+        name: userSnap.exists ? (userSnap.data().name || "") : "",
+        amount: o.amount,
+        method: "midtrans",
+        channel: b.payment_type || null,
+        status: "approved",
+        handledBy: "sistem",
+        handledAt: Date.now(),
+        createdAt: Date.now(),
+        orderId,
+      });
+      return "topup_lunas";
     }
 
     const sessRef = db.collection("sessions").doc(o.sessionId);

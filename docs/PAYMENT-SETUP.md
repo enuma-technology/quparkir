@@ -287,6 +287,30 @@ netlify env:import .env
 > menulis ke emulator, jadi tidak menyentuh kunci asli maupun data produksi —
 > dan tidak membakar 15 kredit Netlify seperti sekali deploy produksi.
 
+### 5f. Saldo QuPay — top up & bayar lewat server (25 Agu 2026)
+
+Dua function tambahan yang tidak ada di panduan asli, keduanya menutup lubang
+"pengguna mengaku sudah bayar":
+
+| Function | Yang dikerjakan |
+|---|---|
+| `create-topup.js` | Order Snap untuk top up saldo. Saldo bertambah di **webhook**, bukan saat pengguna menekan tombol. Jalur lama (`/topups` + persetujuan petugas) tetap ada sebagai cadangan saat gateway mati. |
+| `wallet-checkout.js` | Bayar parkir dengan saldo, seluruhnya di server dalam **satu** `runTransaction()`: cek saldo, potong saldo, tutup sesi, catat transaksi, kembalikan slot, lepas `activeSession`. |
+
+Kenapa `wallet-checkout` perlu ada: sebelumnya browser menutup sesi lalu
+menulis saldo baru sebagai **dua operasi terpisah**, dan `firestore.rules`
+tidak punya cara mengikat keduanya. Siapa pun bisa menjalankan yang pertama
+tanpa yang kedua — parkir gratis, tanpa meretas apa pun. Di dalam satu
+transaksi, keduanya tidak bisa dipisahkan.
+
+`wallet-checkout` **tidak** ikut saklar Midtrans: ia murni Firestore dan tidak
+menyentuh gateway sama sekali. Kalau function-nya tak terjangkau, klien mundur
+ke jalur lama (browser yang memotong saldo).
+
+Uji: `npm run midtrans:test` — 30 kasus webhook + 21 kasus saldo. Butuh
+emulator **firestore dan auth** (`--only firestore,auth`); rinciannya di
+[`scripts/midtrans/README.md`](../scripts/midtrans/README.md).
+
 ### 5e. Saklar — cara menyalakan & mematikan
 
 Jalur Midtrans mati secara default. Menyalakannya perlu **dua** saklar,

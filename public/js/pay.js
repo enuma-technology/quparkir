@@ -114,12 +114,14 @@ async function konfigServer() {
   if (cfgServer !== undefined) return cfgServer;
   try {
     const res = await fetch(paymentConfig.apiBase + "/payment-config");
-    cfgServer = res.ok ? await res.json() : { enabled: false };
+    // walletServer disamakan dengan "function terjangkau": kalau responsnya
+    // tidak sampai, keduanya sama-sama tidak bisa dipakai.
+    cfgServer = res.ok ? await res.json() : { enabled: false, walletServer: false };
   } catch (e) {
     // Function mati, situs Netlify ditangguhkan, atau perangkat offline —
     // ketiganya sama artinya bagi pengguna: pakai jalur QRIS saja.
     console.warn("payment-config tidak terjangkau:", e.message);
-    cfgServer = { enabled: false };
+    cfgServer = { enabled: false, walletServer: false };
   }
   return cfgServer;
 }
@@ -151,7 +153,11 @@ async function idTokenFirebase() {
   return u.getIdToken();
 }
 
-async function payMidtrans({ sessionId, title }) {
+// Satu alur untuk semua pembayaran lewat gateway: minta token → buka Snap →
+// tunggu webhook. Yang membedakan parkir dan top up hanyalah endpoint dan
+// muatannya, jadi keduanya memakai fungsi ini supaya tidak ada dua salinan
+// logika tunggu-lunas yang bisa berbeda diam-diam.
+async function lewatGateway({ endpoint, muatan }) {
   // Mode DEMO tidak punya Firestore sama sekali — tidak ada yang bisa ditunggu.
   if (DB?.mode !== "firebase" || !DB._db) return MUNDUR;
 
@@ -162,10 +168,10 @@ async function payMidtrans({ sessionId, title }) {
   try {
     await loadSnap(cfg);
     const idToken = await idTokenFirebase();
-    const res = await fetch(paymentConfig.apiBase + "/create-payment", {
+    const res = await fetch(paymentConfig.apiBase + endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + idToken },
-      body: JSON.stringify({ sessionId }),        // ← nominal TIDAK dikirim
+      body: JSON.stringify(muatan),
     });
     if (res.status === 503) { cfgServer = { enabled: false }; return MUNDUR; }
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -174,7 +180,7 @@ async function payMidtrans({ sessionId, title }) {
   } catch (e) {
     // Apa pun yang gagal SEBELUM Snap terbuka masih aman untuk dimundurkan:
     // belum ada uang yang berpindah. Setelah Snap terbuka, tidak lagi.
-    console.warn("Midtrans tidak bisa dipakai:", e.message);
+    console.warn("Gateway tidak bisa dipakai:", e.message);
     toast("Gateway sedang tidak bisa dipakai — memakai QRIS merchant.");
     return MUNDUR;
   }
@@ -202,6 +208,52 @@ async function payMidtrans({ sessionId, title }) {
       },
     });
   });
+}
+
+const payMidtrans = ({ sessionId }) =>
+  lewatGateway({ endpoint: "/create-payment", muatan: { sessionId } });
+
+// Top up saldo lewat gateway.
+//
+// Hasil { server: true } berarti saldo SUDAH ditambah webhook — pemanggil
+// tidak perlu (dan tidak boleh) membuat permintaan /topups untuk petugas.
+// MUNDUR berarti gateway tidak tersedia: pakai jalur lama.
+export async function topUpGateway({ amount }) {
+  const hasil = await lewatGateway({ endpoint: "/create-topup", muatan: { amount } });
+  return hasil === MUNDUR ? { mundur: true } : hasil;
+}
+
+// Bayar parkir memakai saldo QuPay — dikerjakan server dalam satu transaksi.
+//
+// Berbeda dari gateway, ini TIDAK menyentuh Midtrans sama sekali, jadi tidak
+// ikut mati bersama saklar. Hasilnya:
+//   { ok: true, amount, sisa }        → sesi sudah ditutup server
+//   { error: "saldo_kurang", ... }    → saldo tidak cukup (angkanya dari server)
+//   { mundur: true }                  → function tak terjangkau, pakai jalur lama
+export async function bayarSaldo({ sessionId }) {
+  if (DB?.mode !== "firebase" || !DB._db) return { mundur: true };
+  const cfg = await konfigServer();
+  if (cfg.walletServer === false) return { mundur: true };
+
+  try {
+    const idToken = await idTokenFirebase();
+    const res = await fetch(paymentConfig.apiBase + "/wallet-checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + idToken },
+      body: JSON.stringify({ sessionId }),
+    });
+    const badan = await res.json().catch(() => ({}));
+    if (res.ok) return badan;
+    // 402 saldo kurang adalah jawaban yang SAH, bukan kegagalan jaringan —
+    // jangan dimundurkan ke jalur lama, karena jalur lama akan memotong saldo
+    // yang memang tidak cukup.
+    if (res.status === 402) return badan;
+    if (res.status === 409) return { error: "session_not_active" };
+    throw new Error("HTTP " + res.status);
+  } catch (e) {
+    console.warn("wallet-checkout tidak bisa dipakai:", e.message);
+    return { mundur: true };
+  }
 }
 
 // Langganan satu dokumen order. Mengembalikan fungsi penghenti.

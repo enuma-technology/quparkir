@@ -3,7 +3,7 @@ import { DB, MODE } from "../data.js";
 import { Auth } from "../auth.js";
 import { appHeader } from "../parts.js";
 import { go, render } from "../router.js";
-import { payQRIS } from "../pay.js";
+import { payQRIS, topUpGateway } from "../pay.js";
 
 const ROLES = ["pelanggan", "petugas", "admin"];
 const PROVIDER = { google: "Google", email: "Email", anonymous: "Tamu" };
@@ -59,12 +59,31 @@ function topUpModal(u) {
     if (!Number.isInteger(amount) || amount < TOPUP_MIN || amount > TOPUP_MAX)
       return toast(`Nominal harus bilangan bulat ${rupiah(TOPUP_MIN)} – ${rupiah(TOPUP_MAX)}`, "err");
     $("#modalHost").innerHTML = "";
+
+    // Jalur gateway: saldo bertambah sendiri setelah Midtrans memastikan
+    // uangnya masuk — tidak ada tombol "saya sudah bayar", dan tidak ada
+    // petugas yang perlu menunggu.
+    const via = await topUpGateway({ amount });
+    if (via.server) {
+      return modal("Top Up Berhasil", h("div", { style: "text-align:center" }, [
+        h(".center", { style: "font-size:46px" }, "✅"),
+        h(".big-amt", { style: "margin:6px 0 10px", text: rupiah(via.amount ?? amount) }),
+        h("p.muted", { html: "<small>Saldo QuPay Anda sudah bertambah.</small>" }),
+        h("button.btn", { style: "margin-top:16px", onclick: () => { $("#modalHost").innerHTML = ""; render(); } }, "Selesai"),
+      ]));
+    }
+    // topUpGateway() memulangkan false kalau pengguna menutup Snap tanpa bayar,
+    // dan { mundur: true } kalau gateway memang tidak tersedia. Hanya yang
+    // kedua yang boleh lanjut ke jalur cadangan.
+    if (!via.mundur) return toast("Top up dibatalkan", "err");
+
+    // Jalur cadangan: gateway tidak tersedia. Saldo TIDAK ditambah di sini —
+    // QRIS statis tidak memberi tahu aplikasi kapan uang masuk, jadi menambah
+    // saldo atas dasar tombol "sudah bayar" sama dengan membagikan saldo
+    // gratis. Yang dicatat adalah PERMINTAAN; petugas mencocokkannya ke
+    // aplikasi merchant lalu menyetujui.
     const ok = await payQRIS({ amount, title: "Top Up QuPay" });
     if (!ok) return toast("Top up dibatalkan", "err");
-    // Saldo TIDAK ditambah di sini. QRIS statis tidak memberi tahu aplikasi
-    // kapan uang masuk, jadi menambah saldo atas dasar tombol "sudah bayar"
-    // sama dengan membagikan saldo gratis. Yang dicatat adalah PERMINTAAN;
-    // petugas mencocokkannya ke aplikasi merchant lalu menyetujui.
     try {
       await DB.topups.create(u.uid, { amount, name: u.name || "" });
     } catch (e) {

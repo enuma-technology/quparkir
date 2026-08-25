@@ -33,6 +33,11 @@ export default async (req) => {
       // menyala tapi client key kosong = Snap tidak akan pernah terbuka.
       enabled: siap.saklar && siap.serverKey && siap.clientKey,
       siap,
+      // Bayar parkir dengan saldo QuPay dikerjakan server (wallet-checkout),
+      // dan itu TIDAK bergantung pada saklar Midtrans — murni Firestore.
+      // Klien memakai bendera ini untuk tahu jalur server tersedia tanpa
+      // harus menembak endpoint-nya dulu lalu gagal.
+      walletServer: true,
       clientKey,
       snapUrl: MIDTRANS.snapUrl,
       isProduction: MIDTRANS.isProd,

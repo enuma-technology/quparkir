@@ -27,6 +27,16 @@ process.env.MIDTRANS_SERVER_KEY = "kunci-uji-lokal";
 const { db } = await import("../../netlify/functions/lib/_lib.js");
 const webhook = (await import("../../netlify/functions/midtrans-webhook.js")).default;
 
+// Emulator menyimpan data antar-jalan. Tanpa membersihkannya, hitungan seperti
+// "transaksi tercatat 1×" akan menghitung sisa percobaan sebelumnya dan uji
+// yang benar terlihat gagal — kegagalan palsu yang paling membuang waktu.
+async function bersihkanEmulator(proyek) {
+  const url = `http://${process.env.FIRESTORE_EMULATOR_HOST}/emulator/v1/projects/${proyek}/databases/(default)/documents`;
+  const res = await fetch(url, { method: "DELETE" });
+  if (!res.ok) throw new Error("Gagal membersihkan emulator: HTTP " + res.status);
+}
+await bersihkanEmulator(process.env.FB_PROJECT_ID);
+
 const KUNCI = process.env.MIDTRANS_SERVER_KEY;
 const JAM = 3600000;
 
@@ -141,6 +151,40 @@ console.log("\n— ORDER TAK DIKENAL —");
   // Midtrans akan mengetuk berjam-jam kalau dibalas galat.
   t("dibalas 200 tanpa membuat apa pun", res.status === 200, "status " + res.status);
   t("tidak ada dokumen order baru", !(await db.collection("orders").doc("QP-tidak-ada").get()).exists);
+}
+
+console.log("\n— TOP UP LEWAT GATEWAY —");
+// Order top up tidak punya sesi parkir: yang bertambah adalah saldo, dan
+// pertambahannya HARUS datang dari webhook — bukan dari tombol di browser.
+{
+  const orderId = "TU-uji";
+  await db.collection("users").doc(UID).set({ name: "Penguji", wallet: 25000 });
+  await db.collection("orders").doc(orderId).set({
+    uid: UID, jenis: "topup", amount: 50000, status: "pending", createdAt: new Date() });
+
+  const res = await kirim(notifikasi(orderId, { gross: "50000" }));
+  const u = await ambil("users", UID);
+  const catatan = await db.collection("topups").where("orderId", "==", orderId).get();
+  t("dibalas 200", res.status === 200, "status " + res.status);
+  t("order jadi paid", (await ambil("orders", orderId)).status === "paid");
+  t("saldo bertambah 25.000 → 75.000", u.wallet === 75000, String(u.wallet));
+  t("tercatat di /topups sebagai approved", catatan.size === 1 && catatan.docs[0].data().status === "approved");
+  t("penyetujunya sistem, bukan petugas", catatan.docs[0]?.data().handledBy === "sistem");
+
+  // Midtrans memang mengirim ulang notifikasi; saldo tidak boleh ikut berlipat.
+  await kirim(notifikasi(orderId, { gross: "50000" }));
+  t("notifikasi ganda: saldo TETAP 75.000", (await ambil("users", UID)).wallet === 75000, String((await ambil("users", UID)).wallet));
+  t("notifikasi ganda: catatan /topups tetap 1", (await db.collection("topups").where("orderId", "==", orderId).get()).size === 1);
+}
+
+{
+  const orderId = "TU-beda";
+  await db.collection("users").doc(UID).set({ name: "Penguji", wallet: 10000 });
+  await db.collection("orders").doc(orderId).set({
+    uid: UID, jenis: "topup", amount: 50000, status: "pending", createdAt: new Date() });
+  await kirim(notifikasi(orderId, { gross: "1000" }));
+  t("bayar 1.000 utk top up 50.000 → mismatch", (await ambil("orders", orderId)).status === "mismatch");
+  t("saldo tidak bertambah sepeser pun", (await ambil("users", UID)).wallet === 10000);
 }
 
 console.log(`\n=== ${pass} lulus, ${fail} gagal ===`);

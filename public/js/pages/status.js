@@ -4,7 +4,7 @@ import { Auth } from "../auth.js";
 import { pageHeader } from "../parts.js";
 import { go } from "../router.js";
 import { renderQR } from "../qr.js";
-import { choosePayment, payQRIS } from "../pay.js";
+import { choosePayment, payQRIS, bayarSaldo } from "../pay.js";
 
 export default async function statusPage(view) {
   const u = Auth.current();
@@ -51,13 +51,43 @@ export default async function statusPage(view) {
     update();
   });
 
+  // Struk. Dipisah karena empat jalur pembayaran berakhir di sini, dan dulu
+  // salinannya sempat berbeda-beda antar jalur.
+  function struk(s, { amount, method, sisa = null }) {
+    const body = h("div", {}, [
+      h(".center", { style: "font-size:46px" }, "✅"),
+      h("h3.center", { text: "Pembayaran Berhasil" }),
+      h("p.center.muted", { style: "margin:6px 0 14px", text: s.locationName }),
+      h(".li", {}, [h(".ic", { text: "💳" }), h("div", { style: "flex:1" }, [h(".t", { text: "Total dibayar" }), h(".s", { text: method === "qupay" ? "QuPay" : "QRIS" })]), h(".end", {}, [h("b", { text: rupiah(amount), style: "color:var(--blue-700);font-size:1.1rem" })])]),
+      sisa !== null ? h("p.center.muted", { style: "margin-top:8px", html: "<small>Sisa saldo: " + rupiah(sisa) + "</small>" }) : null,
+      h("button.btn", { style: "margin-top:16px", onclick: () => { $("#modalHost").innerHTML = ""; go("#/riwayat"); } }, "Lihat Riwayat"),
+    ]);
+    modal("Struk Parkir", body);
+  }
+
   async function doCheckout(s) {
     try {
       const bal = await Promise.resolve(DB.wallet.get(u.uid));
       const preview = hitungTarif(s.vehicle.type, Date.now() - s.checkinAt);
-      const method = await choosePayment({ amount: preview, balance: bal });
+      let method = await choosePayment({ amount: preview, balance: bal });
       if (!method) return;
-      let z = null;
+
+      // ---- QuPay: dikerjakan server dalam satu transaksi ----
+      // Dulu browser menutup sesi lalu menulis saldo baru sebagai dua langkah
+      // terpisah; kalau langkah kedua tidak dijalankan, parkirnya gratis.
+      if (method === "qupay") {
+        const hasil = await bayarSaldo({ sessionId: s.id });
+        if (hasil.ok) return struk(s, { amount: hasil.amount, method, sisa: hasil.sisa });
+        if (hasil.error === "session_not_active") return toast("Sesi sudah selesai.", "err");
+        if (hasil.error === "saldo_kurang") {
+          // Angkanya dari server, bukan dari saldo yang mungkin sudah basi di layar.
+          toast("Saldo " + rupiah(hasil.saldo) + " tidak cukup — selesaikan via QRIS", "err");
+          method = "qris";
+        }
+        // hasil.mundur → function tak terjangkau; lanjut ke jalur lama di bawah
+      }
+
+      let z = null, sisa = null;
       if (method === "qris") {
         const hasil = await payQRIS({ amount: preview, title: "Bayar Parkir — QRIS", sessionId: s.id });
         if (!hasil) return toast("Pembayaran dibatalkan", "err");
@@ -65,10 +95,12 @@ export default async function statusPage(view) {
         // menutup sesi, mencatat transaksi, dan mengembalikan slot lokasi.
         // Memanggil DB.checkout() lagi di sini akan menutupnya dua kali — dan
         // tulisannya pasti ditolak rules karena sesinya bukan 'active' lagi.
-        if (hasil.server) z = { amount: hasil.amount };
+        if (hasil.server) return struk(s, { amount: hasil.amount, method });
       }
-      if (!z) z = await DB.checkout(s.id, { method });
-      let sisa = null;
+
+      // ---- Jalur lama: browser yang menutup sesi ----
+      // Tersisa untuk mode DEMO dan untuk saat function tak terjangkau.
+      z = await DB.checkout(s.id, { method });
       if (method === "qupay") {
         // Baca ulang saldo TERBARU tepat sebelum debit (hindari lost-update dari tab lain).
         const fresh = await Promise.resolve(DB.wallet.get(u.uid));
@@ -81,15 +113,7 @@ export default async function statusPage(view) {
           await DB.wallet.set(u.uid, sisa);
         }
       }
-      const body = h("div", {}, [
-        h(".center", { style: "font-size:46px" }, "✅"),
-        h("h3.center", { text: "Pembayaran Berhasil" }),
-        h("p.center.muted", { style: "margin:6px 0 14px", text: s.locationName }),
-        h(".li", {}, [h(".ic", { text: "💳" }), h("div", { style: "flex:1" }, [h(".t", { text: "Total dibayar" }), h(".s", { text: method === "qupay" ? "QuPay" : "QRIS" })]), h(".end", {}, [h("b", { text: rupiah(z.amount), style: "color:var(--blue-700);font-size:1.1rem" })])]),
-        method === "qupay" ? h("p.center.muted", { style: "margin-top:8px", html: "<small>Sisa saldo: " + rupiah(sisa) + "</small>" }) : null,
-        h("button.btn", { style: "margin-top:16px", onclick: () => { $("#modalHost").innerHTML = ""; go("#/riwayat"); } }, "Lihat Riwayat"),
-      ]);
-      modal("Struk Parkir", body);
+      struk(s, { amount: z.amount, method, sisa });
     } catch (e) { toast(e.message, "err"); }
   }
 
