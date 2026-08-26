@@ -51,6 +51,17 @@ await t("mobil 3 jam bayar 5000 → DITOLAK", assertFails(updateDoc(doc(ali, "se
 await t("mobil 3 jam bayar 7000 → BOLEH", assertSucceeds(updateDoc(doc(ali, "sessions", "s-mobil-3b"), CO(7000))));
 await t("orang lain checkout sesi Ali → DITOLAK", assertFails(updateDoc(doc(budi, "sessions", "s-motor-0c"), CO(2000))));
 
+console.log("\n— CHECK-IN —");
+// Petugas menjaga lokasi, bukan memarkir di sana. Sesi atas namanya mengacaukan
+// hitungan slot dan laporan pendapatan — dan UI yang menyembunyikan tombol
+// check-in bukan penjaga, karena console peramban melewatinya dalam satu baris.
+const sesiBaru = (uid) => ({ uid, vehicle: { type: "motor", plate: "AD 9 XX" },
+  locationId: "loc-square", locationName: "Solo Square",
+  checkinAt: Date.now(), status: "active", verified: false, qrToken: "QP-baru" });
+await t("pelanggan check-in → BOLEH", assertSucceeds(addDoc(collection(ali, "sessions"), sesiBaru(ALI))));
+await t("petugas check-in → DITOLAK", assertFails(addDoc(collection(ptg, "sessions"), sesiBaru(PTG))));
+await t("petugas check-in atas nama orang lain → DITOLAK", assertFails(addDoc(collection(ptg, "sessions"), sesiBaru(ALI))));
+
 console.log("\n— VERIFIKASI —");
 await t("pemilik self-verify → DITOLAK", assertFails(updateDoc(doc(ali, "sessions", "s-verif"), { verified: true, verifiedBy: ALI })));
 await t("petugas verify → BOLEH", assertSucceeds(updateDoc(doc(ptg, "sessions", "s-verif2"), { verified: true, verifiedBy: PTG })));

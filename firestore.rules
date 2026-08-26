@@ -102,9 +102,16 @@ service cloud.firestore {
 
     match /sessions/{id} {
       allow read: if isSignedIn() && (resource.data.uid == uid() || isPetugas());
+      // Petugas TIDAK boleh membuat sesi parkir. Dia menjaga lokasi, bukan
+      // memarkir di sana, dan sesi atas namanya mengacaukan hitungan slot serta
+      // laporan pendapatan. UI-nya memang sudah tidak menyediakan tombol
+      // check-in bagi petugas, tapi UI bukan penjaga — console peramban
+      // melewatinya dalam satu baris. Admin sengaja tidak ikut dilarang supaya
+      // masih bisa menguji alur pelanggan.
       allow create: if isSignedIn() && request.resource.data.uid == uid()
                     && request.resource.data.status == 'active'
-                    && request.resource.data.verified == false;
+                    && request.resource.data.verified == false
+                    && roleOf(uid()) != 'petugas';
       // Pemilik: hanya field checkout — TIDAK bisa self-verify, dan nominalnya
       // wajib menutupi lama parkir menurut jam server (lihat tarifCukup).
       allow update: if isSignedIn() && resource.data.uid == uid()

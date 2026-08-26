@@ -110,7 +110,15 @@ function guard(fn, { roles } = {}) {
   return async (view) => {
     const u = window.__AUTH.current();
     if (!u) { rememberRedirect(location.hash || "#/home"); go("#/login"); return; }
-    if (roles && !roles.includes(u.role)) { toast("Akses khusus " + roles.join("/")); go("#/home"); return; }
+    if (roles && !roles.includes(u.role)) {
+      // Pesan dan tujuannya disesuaikan peran. Melempar petugas ke "#/home"
+      // dengan pesan "Akses khusus pelanggan" membingungkan: dia bukan
+      // pengguna yang kurang izin, dia pengguna yang salah aplikasi.
+      const kePetugas = u.role === "petugas";
+      toast(kePetugas ? "Halaman ini untuk pelanggan" : "Akses khusus " + roles.join("/"));
+      go(kePetugas ? "#/petugas" : "#/home");
+      return;
+    }
     return fn(view);
   };
 }
@@ -132,9 +140,9 @@ async function main() {
     return homePage(view);
   }));
   route("#/cari", guard(cariPage));
-  route("#/kendaraan", guard(kendaraanPage));
-  route("#/checkin", guard(checkinPage));
-  route("#/status", guard(statusPage));
+  route("#/kendaraan", guard(kendaraanPage, { roles: ["pelanggan", "admin"] }));
+  route("#/checkin", guard(checkinPage, { roles: ["pelanggan", "admin"] }));
+  route("#/status", guard(statusPage, { roles: ["pelanggan", "admin"] }));
   route("#/riwayat", guard(riwayatPage));
   route("#/akun", guard(akunPage));
   route("#/petugas", guard(petugasPage, { roles: ["petugas", "admin"] }));

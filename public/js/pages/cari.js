@@ -1,5 +1,6 @@
 import { h, rupiah, toast } from "../util.js";
 import { DB } from "../data.js";
+import { Auth } from "../auth.js";
 import { pageHeader } from "../parts.js";
 import { go } from "../router.js";
 import { createMap, lotMarker } from "../map.js";
@@ -93,6 +94,7 @@ export default async function cariPage(view) {
     const avail = sisaMotor + sisaCar;
     const cap = capMotor + capCar, pct = cap ? Math.round(((cap - avail) / cap) * 100) : 0;
     const full = avail <= 0;
+    const petugas = Auth.current()?.role === "petugas";
     const km = userPos && koordValid(l) ? haversine(userPos, l) : null;
 
     return h("article.lot" + (full ? ".full" : ""), {}, [
@@ -112,8 +114,14 @@ export default async function cariPage(view) {
       ]),
       h(".bar", {}, [h("i" + (full ? ".full" : ""), { style: "width:" + pct + "%" })]),
       h(".lot-act", {}, [
-        h("button.btn.sm", { type: "button", disabled: full, onclick: () => go("#/checkin?loc=" + l.id) },
-          full ? "Penuh" : "Check-in"),
+        // Petugas TIDAK diberi tombol check-in. Dia menjaga lokasi, bukan
+        // memarkir di sana — dan sesi parkir atas namanya akan mengacaukan
+        // hitungan slot serta laporan pendapatan. Rute tetap berguna: petugas
+        // berpindah antar-lokasi.
+        petugas
+          ? h("button.btn.sm.ghost", { type: "button", onclick: () => go("#/petugas") }, "🦺 Kendaraan di lokasi")
+          : h("button.btn.sm", { type: "button", disabled: full, onclick: () => go("#/checkin?loc=" + l.id) },
+              full ? "Penuh" : "Check-in"),
         h("button.btn.sm.ghost", { type: "button", title: "Rute ke " + (l.address || l.name), onclick: () => bukaRute(l) },
           "🧭 Rute"),
       ]),
