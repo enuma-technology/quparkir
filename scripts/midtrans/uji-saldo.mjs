@@ -67,10 +67,14 @@ const jumlahTransaksi = async (sessionId) =>
 // durasinya 5 jam LEBIH beberapa milidetik, dan hitungTarif() membulatkan ke
 // atas — hasilnya 6 jam (Rp 7.000), bukan 5 jam. Angka setengah jam membuat
 // pembulatannya tidak ambigu: ceil(4,5) = 5 jam → 2000 + 4×1000 = Rp 6.000.
+// saldo: null berarti profil ditulis TANPA field 'wallet' sama sekali —
+// keadaan setiap akun baru sebelum top up pertama.
 async function siapkan(kode, { saldo = 25000, jamLalu = 4.5, status = "active" } = {}) {
   const sessionId = "sesi-" + kode;
   await db.collection("locations").doc(LOC).set({ name: "Lokasi Uji", capMotor: 10, occMotor: 3, capCar: 5, occCar: 1 });
-  await db.collection("users").doc(UID).set({ name: "Penguji", wallet: saldo, activeSession: sessionId });
+  const profil = { name: "Penguji", activeSession: sessionId };
+  if (saldo !== null) profil.wallet = saldo;
+  await db.collection("users").doc(UID).set(profil);
   await db.collection("sessions").doc(sessionId).set({
     uid: UID, vehicle: { type: "motor", plate: "AD 1234 XX" },
     locationId: LOC, locationName: "Lokasi Uji",
@@ -104,6 +108,20 @@ console.log("\n— SALDO TIDAK CUKUP —");
   t("dibalas 402", res.status === 402, "status " + res.status);
   t("menyebut tagihan & saldo apa adanya", badan.amount === 6000 && badan.saldo === 3000);
   t("saldo TIDAK dipotong sebagian", (await ambil("users", UID)).wallet === 3000);
+  t("sesi TETAP aktif", (await ambil("sessions", sid)).status === "active");
+  t("tidak ada transaksi tercatat", (await jumlahTransaksi(sid)) === 0);
+}
+
+console.log("\n— PROFIL TANPA FIELD WALLET —");
+{
+  // Sampai 26 Agu 2026 SALDO_DEFAULT = 25000, jadi akun yang belum pernah top
+  // up sepeser pun tetap bisa membayar parkir — Rp 6.000 pendapatan hilang per
+  // akun baru, dan akun baru gratis dibuat siapa saja.
+  const sid = await siapkan("kosong", { saldo: null });
+  const res = await panggil(sid);
+  const badan = await res.json();
+  t("dibalas 402", res.status === 402, "status " + res.status);
+  t("saldo dibaca 0, bukan 25.000", badan.saldo === 0, String(badan.saldo));
   t("sesi TETAP aktif", (await ambil("sessions", sid)).status === "active");
   t("tidak ada transaksi tercatat", (await jumlahTransaksi(sid)) === 0);
 }

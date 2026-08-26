@@ -137,9 +137,12 @@ export function hitungTarif(type, ms) {
 }
 
 // Saldo awal saat field 'wallet' belum ada. HARUS sama dengan DB.wallet.get()
-// di public/js/data.js (`?? 25000`) dan dengan default di firestore.rules —
-// kalau berbeda, saldo tampak 25.000 di layar tapi dianggap 0 saat membayar.
-export const SALDO_DEFAULT = 25000;
+// di public/js/data.js (`?? 0`) dan dengan default di firestore.rules
+// (`get('wallet', 0)`) — kalau berbeda, saldo tampak lain di layar dan saat
+// membayar. NOL, bukan 25.000: nilai lama membuat profil yang belum pernah top
+// up bisa membelanjakan Rp 25.000 yang tidak pernah dibayar siapa pun, dan di
+// sini uangnya sungguhan (parkir yang terbayar = pendapatan yang hilang).
+export const SALDO_DEFAULT = 0;
 
 // ---------- Identitas ----------
 //

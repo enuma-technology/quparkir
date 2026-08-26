@@ -1,4 +1,4 @@
-import { h, durasiLabel, rupiah, fmtDate, toast } from "../util.js";
+import { h, durasiLabel, rupiah, toast } from "../util.js";
 import { DB } from "../data.js";
 import { Auth } from "../auth.js";
 import { appHeader } from "../parts.js";
@@ -94,6 +94,20 @@ export default async function petugasPage(view) {
 // dalam satu layar panjang membuat permintaan top up baru tenggelam di bawah
 // daftar kendaraan yang bisa puluhan baris.
 // ============================================================
+// Jam:menit:detik + tanggal singkat, untuk dicocokkan ke daftar mutasi merchant.
+const jamDetik = (ts) => new Date(ts).toLocaleString("id-ID",
+  { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+// "3 menit lalu" — permintaan yang baru masuk biasanya mutasinya juga baru,
+// dan yang sudah menua patut dicurigai (orang menekan "sudah bayar" tanpa bayar).
+function usia(ts) {
+  const m = Math.max(0, Math.floor((Date.now() - ts) / 60000));
+  if (m < 1) return "baru saja";
+  if (m < 60) return m + " menit lalu";
+  const j = Math.floor(m / 60);
+  return j < 24 ? j + " jam lalu" : Math.floor(j / 24) + " hari lalu";
+}
+
 export async function topupPetugasPage(view) {
   const u = Auth.current();
   const listEl = h("div.pad");
@@ -116,7 +130,17 @@ export async function topupPetugasPage(view) {
       listEl.append(h(".empty", {}, [h(".ic", { text: "💠" }), h("p", { text: "Tidak ada permintaan top up." })]));
       return;
     }
+
+    // Satu-satunya pegangan untuk mencocokkan ke aplikasi merchant adalah
+    // NOMINAL + JAM — QRIS statis tidak membawa nomor order. Karena itu dua
+    // permintaan dengan nominal sama yang menunggu bersamaan TIDAK bisa
+    // dibedakan dari daftar mutasi: satu uang masuk Rp 50.000 cocok dengan
+    // keduanya, dan menyetujui yang salah berarti memberi saldo gratis kepada
+    // yang belum membayar. Kasus itu ditandai, bukan didiamkan.
+    const jumlahNominal = list.reduce((m, t) => (m[t.amount] = (m[t.amount] || 0) + 1, m), {});
+
     list.forEach(t => {
+      const kembar = jumlahNominal[t.amount] > 1;
       const setuju = h("button.btn.sm", {}, "Setujui");
       const tolak = h("button.btn.sm.ghost", { style: "margin-left:6px" }, "Tolak");
       const jalankan = async (fn, pesan) => {
@@ -130,8 +154,12 @@ export async function topupPetugasPage(view) {
         h(".ic", { style: "background:rgba(59,130,246,.18)", text: "💠" }),
         h("div", { style: "flex:1;min-width:0" }, [
           h(".t", { text: rupiah(t.amount) + " · " + (t.name || t.uid.slice(0, 8)) }),
-          h(".s", { text: "QRIS · " + fmtDate(t.createdAt) }),
-        ]),
+          // Detik ikut ditampilkan: daftar mutasi GoPay merchant memakai jam
+          // menit-detik, dan dua permintaan bisa berjarak kurang dari semenit.
+          h(".s", { text: "QRIS · " + jamDetik(t.createdAt) + " · " + usia(t.createdAt) }),
+          kembar ? h(".s", { style: "color:var(--danger,#ef4444);font-weight:700",
+            text: "⚠️ Ada permintaan lain dengan nominal sama — pastikan Anda mencocokkan mutasi yang benar" }) : null,
+        ].filter(Boolean)),
         h("div", { style: "display:flex;align-items:center" }, [setuju, tolak]),
       ]));
     });

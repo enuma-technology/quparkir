@@ -52,9 +52,9 @@ service cloud.firestore {
     //            adalah top up, dan top up wajib lewat konfirmasi petugas —
     //            lihat koleksi /topups. Tanpa aturan ini siapa pun bisa
     //            menyetel saldonya sendiri lewat console browser.
-    // Default 25000 dipakai saat field 'wallet' belum ada, mengikuti
-    // DB.wallet.get() di data.js (`?? 25000`) — kalau tidak sama, saldo awal
-    // akan tampak 25000 di UI tapi dianggap 0 oleh rules.
+    // Default 0 dipakai saat field 'wallet' belum ada, mengikuti
+    // DB.wallet.get() di data.js (`?? 0`) — kalau tidak sama, saldo awal
+    // akan tampak lain di layar dan di aturan ini.
     match /users/{u} {
       allow read: if isSignedIn() && uid() == u;
       allow create: if isSignedIn() && uid() == u
@@ -66,15 +66,14 @@ service cloud.firestore {
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['wallet'])
             || (request.resource.data.wallet is number
                 && request.resource.data.wallet >= 0
-                && request.resource.data.wallet <= resource.data.get('wallet', 25000)));
+                && request.resource.data.wallet <= resource.data.get('wallet', 0)));
       // Petugas: HANYA menambah saldo (menyetujui top up), tanpa menyentuh
       // field lain milik pengguna. Petugas TIDAK diberi izin baca dokumen ini
       // — profil pelanggan tetap tertutup — jadi DB.topups.approve memakai
       // increment(), bukan baca-lalu-tulis.
-      // Default 0 (bukan 25000) khusus di sini: increment() atas dokumen yang
-      // belum punya field 'wallet' menghasilkan angka = nominal top up, dan
-      // dengan default 25000 top up di bawah 25.000 akan tertolak. Arah
-      // amannya tetap terjaga: klausa ini hanya mencegah petugas MENGURANGI.
+      // Default 0, sama dengan klausa pemilik di atas: increment() atas
+      // dokumen yang belum punya field 'wallet' menghasilkan angka = nominal
+      // top up. Klausa ini hanya mencegah petugas MENGURANGI saldo.
       allow update: if isPetugas()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['wallet'])
         && request.resource.data.wallet is number

@@ -145,8 +145,22 @@ await t("checkout: transaksi lolos rules (sessions+locations+users+transactions)
   assertSucceeds(checkout(pel, sesId, "qris")));
 
 // 7. wallet
-await t("wallet: top up saldo sendiri", () =>
-  assertSucceeds(setDoc(doc(pel, "users", "pel1"), { wallet: 75000 }, { merge: true })));
+//
+// Pemilik hanya boleh MENGURANGI saldonya (membayar). Menaikkan saldo adalah
+// top up, dan top up wajib lewat persetujuan petugas/admin — lihat koleksi
+// /topups. Dulu rules mengizinkan pemilik menulis angka berapa pun asal >= 0
+// (prototipe sebelum saldo pindah ke server, lihat docs/WALLET.md §1), dan uji
+// ini masih menegaskan aturan lama itu.
+//
+// Profil pel1 belum pernah punya field 'wallet', dan itu berarti saldo NOL —
+// bukan 25.000 seperti bawaan lama. Jadi angka positif berapa pun adalah
+// KENAIKAN dan harus ditolak.
+await t("wallet: pelanggan menaikkan saldonya sendiri DITOLAK", () =>
+  assertFails(setDoc(doc(pel, "users", "pel1"), { wallet: 75000 }, { merge: true })));
+await t("wallet: profil tanpa field wallet dianggap NOL, bukan 25.000", () =>
+  assertFails(setDoc(doc(pel, "users", "pel1"), { wallet: 5000 }, { merge: true })));
+await t("wallet: menulis 0 pada profil tanpa wallet BOLEH", () =>
+  assertSucceeds(setDoc(doc(pel, "users", "pel1"), { wallet: 0 }, { merge: true })));
 await t("wallet: saldo negatif ditolak", () =>
   assertFails(setDoc(doc(pel, "users", "pel1"), { wallet: -1 }, { merge: true })));
 

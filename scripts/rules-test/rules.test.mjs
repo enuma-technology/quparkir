@@ -9,16 +9,18 @@ const env = await initializeTestEnvironment({
 });
 await env.clearFirestore();
 
-const ALI = "user-ali", BUD = "user-budi", PTG = "petugas-1";
+const ALI = "user-ali", BUD = "user-budi", PTG = "petugas-1", NOW = "user-nadia";
 const ali = env.authenticatedContext(ALI).firestore();
 const budi = env.authenticatedContext(BUD).firestore();
 const ptg = env.authenticatedContext(PTG).firestore();
+const nad = env.authenticatedContext(NOW).firestore();
 
 await env.withSecurityRulesDisabled(async (c) => {
   const d = c.firestore();
   await setDoc(doc(d, "users", ALI), { name: "Ali", wallet: 25000 });
   await setDoc(doc(d, "users", BUD), { name: "Budi", wallet: 25000 });
   await setDoc(doc(d, "users", PTG), { name: "Petugas", role: "petugas" });
+  await setDoc(doc(d, "users", NOW), { name: "Nadia" });   // profil TANPA field wallet
   const mk = (id, uid, type, jamLalu) => setDoc(doc(d, "sessions", id), {
     uid, vehicle: { type, plate: "AD 1234 XX" }, locationId: "loc-square", locationName: "Solo Square",
     checkinAt: Date.now() - jamLalu * JAM, status: "active", verified: false, qrToken: "QP-" + id });
@@ -74,6 +76,13 @@ await t("Ali mengubah saldo Budi → DITOLAK", assertFails(updateDoc(doc(ali, "u
 await t("petugas menaikkan saldo Budi → BOLEH", assertSucceeds(updateDoc(doc(ptg, "users", BUD), { wallet: 75000 })));
 await t("petugas mengubah nama Budi → DITOLAK", assertFails(updateDoc(doc(ptg, "users", BUD), { name: "Diretas" })));
 await t("Ali menulis activeSession → BOLEH", assertSucceeds(updateDoc(doc(ali, "users", ALI), { activeSession: "s-x" })));
+// Profil yang belum punya field 'wallet' berarti saldo NOL. Sampai 26 Agu 2026
+// default-nya 25000, jadi pemilik bisa "menurunkan" saldo dari 25.000 hantu ke
+// 5.000 nyata — memberi dirinya sendiri Rp 5.000 yang tak pernah dibayar.
+await t("Nadia (tanpa field wallet) menulis wallet 5000 → DITOLAK",
+  assertFails(updateDoc(doc(nad, "users", NOW), { wallet: 5000 })));
+await t("Nadia (tanpa field wallet) menulis wallet 0 → BOLEH",
+  assertSucceeds(updateDoc(doc(nad, "users", NOW), { wallet: 0 })));
 
 console.log("\n— TOP UP (/topups) —");
 await t("Ali membuat permintaan pending → BOLEH", assertSucceeds(addDoc(collection(ali, "topups"), { uid: ALI, name: "Ali", amount: 50000, method: "qris", status: "pending", createdAt: Date.now() })));

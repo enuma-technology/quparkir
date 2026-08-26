@@ -196,7 +196,7 @@ Terapkan:
 firebase deploy --only firestore:rules
 ```
 
-> ⚠️ Saldo awal Rp 25.000 (`?? 25000` di `data.js`) tidak dipengaruhi rules ini — itu **nilai baca**, bukan tulisan. Kalau tidak ingin akun baru mulai dengan saldo gratis, hapus `?? 25000` (ganti jadi `?? 0`) sekalian di Langkah 6.
+> ⚠️ ~~Saldo awal Rp 25.000~~ — **sudah dibereskan 26 Agu 2026.** Saldo awal itu nilai *baca* (`?? 25000` di `data.js`), bukan tulisan, jadi rules tidak memengaruhinya: layar menjanjikan Rp 25.000 yang tidak pernah ada di dokumen mana pun, dan angkanya justru "turun" begitu top up pertama masuk. Adapter Firebase kini `?? 0`, dan `firestore.rules` memakai default yang sama (`get('wallet', 0)` di kedua klausa). Mode demo tetap 25.000 — di sana tidak ada uang sungguhan (lihat §8).
 
 ---
 

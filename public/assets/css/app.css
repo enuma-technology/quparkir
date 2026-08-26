@@ -551,6 +551,12 @@ label.field span{display:block;font-size:.8rem;font-weight:700;margin-bottom:6px
 .acc-balance .lbl{font-size:.8rem;font-weight:700;opacity:.88}
 .acc-balance .amt{margin-top:2px;font-size:1.8rem;font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .acc-balance .sub{margin-top:4px;font-size:.8rem;opacity:.85}
+/* Permintaan top up yang menunggu admin. [hidden] dihormati eksplisit karena
+   display:flex di sini akan mengalahkan display:none bawaan atribut itu. */
+.acc-topup-wait{display:flex;align-items:center;gap:7px;margin-top:10px;padding:8px 10px;
+  border-radius:10px;background:rgba(255,255,255,.18);font-size:.78rem;font-weight:700;line-height:1.35}
+.acc-topup-wait[hidden]{display:none}
+.acc-topup-wait .ic{flex:none;font-size:.9rem}
 .acc-balance .acts{display:flex;gap:8px;margin-top:14px}
 .acc-balance .acts button{flex:1;border:0;cursor:pointer;font:inherit;font-weight:800;font-size:.86rem;padding:11px;border-radius:12px;
   background:rgba(255,255,255,.2);color:#fff;transition:.16s}
@@ -568,6 +574,9 @@ label.field span{display:block;font-size:.8rem;font-weight:700;margin-bottom:6px
 .acc-item .s{margin-top:1px;font-size:.8rem;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .acc-item .go{margin-left:auto;padding-left:8px;font-size:1.3rem;line-height:1;color:var(--text-soft)}
 .acc-item.danger .ic{background:rgba(239,68,68,.14)}
+/* Menu dengan pekerjaan yang menunggu (mis. permintaan top up belum disetujui) */
+.acc-antre .ic{background:rgba(245,158,11,.18)}
+.acc-antre .s{color:#b45309;font-weight:700}
 .acc-item.danger .t{color:var(--danger)}
 .acc-foot{margin:6px 0 4px;text-align:center;font-size:.78rem;color:var(--text-soft)}
 

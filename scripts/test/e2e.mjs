@@ -235,7 +235,10 @@ try {
   await page.click(".modal button:has(.t:text-is('QRIS'))");
   await page.waitForSelector("button:has-text('Saya sudah bayar')", { timeout: 15000 });
   await page.click("button:has-text('Saya sudah bayar')");
-  await page.waitForSelector("text=Pembayaran Berhasil", { timeout: 20000 });
+  // Judul modalnya "Struk Parkir" sejak v13 — kartu sukses biasa diganti struk
+  // yang memuat plat, jam masuk/keluar, dan nomor rujukan, karena itulah yang
+  // ditanyakan petugas di lapangan.
+  await page.waitForSelector(".modal:has-text('Struk Parkir') .struk .lunas", { timeout: 20000 });
   await page.screenshot({ path: SHOT + "/5-struk.png" });
 
   const ses2 = (await listDocs("sessions")).map(flat)[0];
@@ -252,24 +255,88 @@ try {
   ok("Keterisian lokasi dikembalikan saat check-out", `occMotor ${afterIn.occMotor} → ${afterOut.occMotor}`);
 
   // Riwayat
-  await page.click("button:has-text('Lihat Riwayat')");
+  await page.click(".modal .struk ~ div button:has-text('Riwayat'), .modal button.btn:has-text('Riwayat')");
   await page.waitForSelector(".rolebar", { timeout: 10000 });
   await page.click(".rolebar button:has-text('History')");
   await page.waitForSelector(".li .t", { timeout: 15000 });
   ok("Riwayat menampilkan transaksi selesai dari Firestore");
   await page.screenshot({ path: SHOT + "/6-riwayat.png" });
 
-  // Top up QuPay → wallet di Firestore
+  // ---------- Top up QuPay: permintaan → persetujuan admin → saldo ----------
+  //
+  // Yang dibuktikan di sini bukan "saldo bertambah", tapi URUTANNYA. Menekan
+  // "Saya sudah bayar" TIDAK boleh menambah saldo sepeser pun: QRIS statis
+  // tidak memberi tahu aplikasi kapan uang masuk, jadi tombol itu adalah
+  // pernyataan pengguna, bukan bukti. Saldo hanya boleh naik setelah admin
+  // mencocokkan mutasi di aplikasi GoPay merchant lalu menyetujui.
+  const saldoAwal = flat(await api(`/users/${uid}`)).wallet ?? 0;
+
   await page.evaluate(() => (location.hash = "#/akun"));
   await page.waitForSelector("button:has-text('Top Up')", { timeout: 10000 });
   await page.click("button:has-text('Top Up')");
   await page.click(".modal button.btn:has-text('Lanjut Bayar'), .modal button.btn:has-text('Top Up')");
-  await page.waitForSelector("button:has-text('Saya sudah bayar')", { timeout: 15000 });
+
+  // QR yang tampil harus QRIS merchant SUNGGUHAN. Kalau simulator sempat
+  // muncul di jalur top up, saldo bisa lahir dari QR palsu — justru itu yang
+  // ditutup, jadi kehadirannya di sini adalah kegagalan.
+  await page.waitForSelector(".modal .qrbox canvas, .modal .qrbox svg, .modal .qrbox img", { timeout: 15000 });
+  if (await page.locator(".modal:has-text('MODE SIMULASI')").count())
+    throw new Error("top up jatuh ke simulator — seharusnya QRIS merchant asli");
+  ok("Top up memakai QRIS merchant asli, bukan simulator");
+  await page.screenshot({ path: SHOT + "/7-topup-qris.png" });
+
   await page.click("button:has-text('Saya sudah bayar')");
-  await page.waitForTimeout(2500);
-  const w = flat(await api(`/users/${uid}`)).wallet;
-  if (!w) throw new Error("wallet tidak tersimpan di users/{uid}");
-  ok("Top up QuPay → saldo tersimpan di users/{uid}.wallet", "Rp " + w);
+  await page.waitForSelector("text=Menunggu Konfirmasi", { timeout: 15000 });
+
+  const minta = await waitFor(async () => {
+    const l = (await listDocs("topups")).map(flat).filter(t => t.uid === uid && t.status === "pending");
+    return l.length ? l[0] : null;
+  }, "permintaan top up tercatat pending");
+  ok("Permintaan top up tercatat pending, bukan saldo", "Rp " + minta.amount);
+
+  const saldoSetelahMinta = flat(await api(`/users/${uid}`)).wallet ?? 0;
+  if (saldoSetelahMinta !== saldoAwal)
+    throw new Error(`saldo berubah tanpa persetujuan: ${saldoAwal} → ${saldoSetelahMinta}`);
+  ok("Menekan 'Saya sudah bayar' TIDAK menambah saldo", "tetap Rp " + saldoAwal);
+
+  // Permintaan yang menunggu harus terlihat pengguna di kartu saldo — tanpa
+  // penanda itu, jeda persetujuan terbaca sebagai "top up gagal" dan orang
+  // membayar untuk kedua kalinya.
+  await page.click(".modal button.btn:has-text('Mengerti')");
+  await page.waitForSelector(".acc-topup-wait:not([hidden])", { timeout: 15000 });
+  ok("Kartu saldo menandai permintaan yang menunggu konfirmasi");
+  await page.screenshot({ path: SHOT + "/8-topup-menunggu.png" });
+
+  // Admin menyetujui dari halaman Konfirmasi Top Up.
+  await keluar();
+  await masuk("admin@quparkir.test");
+  // Lewat MENU, bukan dengan mengetik hash. Admin memakai menu pelanggan, jadi
+  // baris "Konfirmasi Top Up" di kelompok Kelola adalah satu-satunya jalan
+  // masuknya — kalau hilang, permintaan top up menggantung tanpa ada yang tahu.
+  await page.evaluate(() => (location.hash = "#/akun"));
+  const menuTopUp = page.locator(".acc-item:has-text('Konfirmasi Top Up')");
+  await menuTopUp.waitFor({ timeout: 15000 });
+  await page.waitForSelector(".acc-item.acc-antre:has-text('permintaan menunggu persetujuan')", { timeout: 15000 });
+  ok("Menu admin menandai ada permintaan top up menunggu");
+  await menuTopUp.click();
+  await page.waitForSelector("text=Konfirmasi Top Up", { timeout: 15000 });
+  await page.waitForSelector(`.li .t:has-text('${minta.amount.toLocaleString("id-ID")}')`, { timeout: 20000 });
+  ok("Admin melihat permintaan top up yang menunggu");
+  await page.screenshot({ path: SHOT + "/9-topup-admin.png" });
+  await page.click("button:has-text('Setujui')");
+
+  const sesudah = await waitFor(async () => {
+    const w = flat(await api(`/users/${uid}`)).wallet ?? 0;
+    return w === saldoAwal + minta.amount ? w : null;
+  }, "saldo bertambah setelah persetujuan admin");
+  ok("Admin menyetujui → saldo bertambah", `Rp ${saldoAwal} → Rp ${sesudah}`);
+
+  const tuntas = (await listDocs("topups")).map(flat).find(t => t.uid === uid);
+  if (tuntas.status !== "approved") throw new Error("permintaan tidak ditandai approved: " + tuntas.status);
+  ok("Permintaan ditandai approved + penyetujunya tercatat", "handledBy=" + tuntas.handledBy);
+
+  await keluar();
+  await masuk("pelanggan@quparkir.test");
 
   // Tautan/bookmark lama #/admin diarahkan ke Panel Admin berdiri sendiri
   // (admin.html) — lihat komentar redirect di app.js. Panel itu punya gerbang

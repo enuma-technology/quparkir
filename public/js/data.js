@@ -94,6 +94,10 @@ function demoBackend() {
     transactions: { subscribe: (cb) => sub(x => x.transactions.sort((a, b) => b.paidAt - a.paidAt), cb) },
     officers: { subscribe: (cb) => sub(x => x.officers, cb) },
     profile: { get: (u) => s.profiles[u] || null, set: (u, p) => { s.profiles[u] = { ...s.profiles[u], ...p }; emit(); } },
+    // 25.000 di sini SENGAJA, dan hanya di sini: mode demo tidak menyentuh uang
+    // sungguhan, jadi saldo awal itu bekal supaya alur bayar-pakai-QuPay bisa
+    // dicoba tanpa top up. Adapter Firebase di bawah memakai 0 — jangan
+    // disamakan "supaya konsisten".
     wallet: {
       get: (u) => s.wallet[u] ?? 25000,
       set: (u, v) => { s.wallet[u] = v; emit(); },
@@ -109,6 +113,8 @@ function demoBackend() {
         s.topups.push(t); emit(); return t;
       },
       subscribePending: (cb) => sub(x => (x.topups || []).filter(t => t.status === "pending")
+        .sort((a, b) => b.createdAt - a.createdAt), cb),
+      subscribeMine: (u, cb) => sub(x => (x.topups || []).filter(t => t.uid === u && t.status === "pending")
         .sort((a, b) => b.createdAt - a.createdAt), cb),
       approve: async (id, officerId) => {
         const t = (s.topups || []).find(x => x.id === id);
@@ -180,9 +186,22 @@ async function firebaseBackend() {
   // di console DAN halaman tetap menggambar keadaan kosongnya.
   // Semua pemakai watch() adalah langganan KOLEKSI, jadi bentuk kosongnya
   // selalu array — jangan kirim null, pemanggil langsung mem-filter/map hasilnya.
-  const watch = (ref, cb, map = colArr, label = "") => onSnapshot(ref, s => cb(map(s)), (e) => {
+  // Setiap onSnapshot WAJIB lewat sini, bukan dipanggil telanjang.
+  //
+  // Tanpa handler galat, Firebase melempar "Uncaught Error in snapshot
+  // listener" — dan itu PASTI terjadi pada pemakaian normal: saat logout,
+  // uid() jadi null sementara langganan masih terpasang sepersekian detik,
+  // sehingga rules menolak listen-nya (`permission-denied` untuk 'list').
+  // Galat yang tidak tertangani itu menggelinding ke window.onerror dan
+  // terbaca seperti kerusakan, padahal hanya pembongkaran yang wajar.
+  //
+  // `kosong` adalah nilai yang dikirim balik saat gagal, dan harus berbentuk
+  // sama dengan hasil sukses: [] untuk daftar, null untuk satu dokumen.
+  // Mengirim [] ke pemanggil yang mengharapkan satu sesi membuat layar
+  // menganggap ada sesi aktif yang isinya kosong.
+  const watch = (ref, cb, map = colArr, label = "", kosong = []) => onSnapshot(ref, s => cb(map(s)), (e) => {
     console.warn("Langganan" + (label ? " " + label : "") + " gagal:", e.code || e.message);
-    cb([]);
+    cb(kosong);
   });
 
   return {
@@ -233,23 +252,33 @@ async function firebaseBackend() {
       remove: (id) => deleteDoc(doc(db, "banners", id)),
     },
     vehicles: {
-      subscribe: (u, cb) => onSnapshot(collection(db, "users", u, "vehicles"), s => cb(colArr(s))),
+      subscribe: (u, cb) => watch(collection(db, "users", u, "vehicles"), cb, colArr, "kendaraan"),
       add: (u, v) => addDoc(collection(db, "users", u, "vehicles"), v),
       remove: (u, id) => deleteDoc(doc(db, "users", u, "vehicles", id)),
     },
     sessions: {
-      subscribeActive: (u, cb) => onSnapshot(query(collection(db, "sessions"), where("uid", "==", u), where("status", "==", "active")),
-        s => cb(colArr(s)[0] || null)),
-      subscribeAllActive: (cb) => onSnapshot(query(collection(db, "sessions"), where("status", "==", "active")), s => cb(colArr(s))),
-      subscribeFor: (u, cb) => onSnapshot(query(collection(db, "sessions"), where("uid", "==", u)),
-        s => cb(colArr(s).sort((a, b) => b.checkinAt - a.checkinAt))),
+      subscribeActive: (u, cb) => watch(
+        query(collection(db, "sessions"), where("uid", "==", u), where("status", "==", "active")),
+        cb, s => colArr(s)[0] || null, "sesi-aktif", null),
+      subscribeAllActive: (cb) => watch(
+        query(collection(db, "sessions"), where("status", "==", "active")), cb, colArr, "sesi-semua"),
+      subscribeFor: (u, cb) => watch(
+        query(collection(db, "sessions"), where("uid", "==", u)),
+        cb, s => colArr(s).sort((a, b) => b.checkinAt - a.checkinAt), "sesi-saya"),
       listFor: async (u) => colArr(await getDocs(query(collection(db, "sessions"), where("uid", "==", u)))).sort((a, b) => b.checkinAt - a.checkinAt),
     },
     transactions: { subscribe: (cb) => watch(collection(db, "transactions"), cb, s => colArr(s).sort((a, b) => b.paidAt - a.paidAt), "transactions") },
     officers: { subscribe: (cb) => watch(collection(db, "officers"), cb, colArr, "officers") },
     profile: { get: async (u) => (await getDoc(doc(db, "users", u))).data() || null, set: (u, p) => setDoc(doc(db, "users", u), p, { merge: true }) },
+    // Profil tanpa field 'wallet' berarti saldo NOL, bukan 25.000. Dulu
+    // bawaannya 25000 sehingga layar menjanjikan saldo yang tidak pernah ada
+    // di dokumen mana pun — dan begitu top up pertama masuk, angkanya justru
+    // "turun" ke nilai sungguhan. QRIS merchant menerima uang nyata, jadi
+    // saldo hantu itu bisa dibelanjakan jadi parkir sungguhan.
+    // firestore.rules memakai default yang sama (get('wallet', 0)); kalau
+    // keduanya berbeda, saldo tampak lain di layar dan di aturan.
     wallet: {
-      get: async (u) => (await getDoc(doc(db, "users", u))).data()?.wallet ?? 25000,
+      get: async (u) => (await getDoc(doc(db, "users", u))).data()?.wallet ?? 0,
       set: (u, v) => setDoc(doc(db, "users", u), { wallet: v }, { merge: true }),
       // Langganan dokumen profil. WAJIB ada sejak saldo bisa berubah dari
       // SERVER: top up lewat gateway ditambahkan webhook, dan bayar parkir
@@ -257,7 +286,7 @@ async function firebaseBackend() {
       // dari peramban ini. Tanpa langganan, angka di layar baru benar setelah
       // pengguna memuat ulang halaman, dan itu tampak seperti top up gagal.
       subscribe: (u, cb) => onSnapshot(doc(db, "users", u),
-        (snap) => cb(snap.data()?.wallet ?? 25000),
+        (snap) => cb(snap.data()?.wallet ?? 0),
         (e) => console.warn("Langganan saldo gagal:", e.code || e.message)),
     },
     topups: {
@@ -266,6 +295,19 @@ async function firebaseBackend() {
       // Tanpa orderBy supaya tidak menuntut composite index — urut di klien.
       subscribePending: (cb) => watch(query(collection(db, "topups"), where("status", "==", "pending")),
         cb, s => colArr(s).sort((a, b) => b.createdAt - a.createdAt), "topups"),
+      // Permintaan MILIK SENDIRI yang masih menunggu. Dipakai halaman Akun
+      // supaya pengguna melihat permintaannya sedang diproses — tanpa ini,
+      // layar tidak berubah sedikit pun setelah "Saya sudah bayar", dan orang
+      // menekan Top Up lagi lalu membayar dua kali.
+      //
+      // Dua filter kesamaan (uid + status) TIDAK menuntut composite index —
+      // Firestore melayaninya dari indeks satu-field. Yang menuntut index
+      // adalah orderBy, jadi pengurutannya tetap di klien seperti di atas.
+      // rules mengizinkan pemilik membaca top up-nya sendiri (firestore.rules:
+      // `resource.data.uid == uid()`), jadi kueri ini tidak butuh izin petugas.
+      subscribeMine: (u, cb) => watch(
+        query(collection(db, "topups"), where("uid", "==", u), where("status", "==", "pending")),
+        cb, s => colArr(s).sort((a, b) => b.createdAt - a.createdAt), "topups-saya"),
       // Satu transaksi: status permintaan & saldo pengguna berubah bersama,
       // supaya tidak pernah ada top up yang disetujui tanpa saldo bertambah.
       approve: (id, officerId) => runTransaction(db, async (tx) => {

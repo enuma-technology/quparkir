@@ -3,7 +3,7 @@ import { DB, MODE } from "../data.js";
 import { Auth } from "../auth.js";
 import { appHeader } from "../parts.js";
 import { go, render } from "../router.js";
-import { payQRIS, topUpGateway, siapkanGateway } from "../pay.js";
+import { bayarTopUp } from "../pay.js";
 
 const ROLES = ["pelanggan", "petugas", "admin"];
 const PROVIDER = { google: "Google", email: "Email", anonymous: "Tamu" };
@@ -60,30 +60,22 @@ function topUpModal(u) {
       return toast(`Nominal harus bilangan bulat ${rupiah(TOPUP_MIN)} – ${rupiah(TOPUP_MAX)}`, "err");
     $("#modalHost").innerHTML = "";
 
-    // Jalur gateway: saldo bertambah sendiri setelah Midtrans memastikan
-    // uangnya masuk — tidak ada tombol "saya sudah bayar", dan tidak ada
-    // petugas yang perlu menunggu.
-    const via = await topUpGateway({ amount });
-    if (via.server) {
-      return modal("Top Up Berhasil", h("div", { style: "text-align:center" }, [
-        h(".center", { style: "font-size:46px" }, "✅"),
-        h(".big-amt", { style: "margin:6px 0 10px", text: rupiah(via.amount ?? amount) }),
-        h("p.muted", { html: "<small>Saldo QuPay Anda sudah bertambah.</small>" }),
-        h("button.btn", { style: "margin-top:16px", onclick: () => { $("#modalHost").innerHTML = ""; render(); } }, "Selesai"),
-      ]));
-    }
-    // topUpGateway() memulangkan false kalau pengguna menutup Snap tanpa bayar,
-    // dan { mundur: true } kalau gateway memang tidak tersedia. Hanya yang
-    // kedua yang boleh lanjut ke jalur cadangan.
-    if (!via.mundur) return toast("Top up dibatalkan", "err");
+    // QRIS merchant asli, tanpa simulator dan tanpa gateway. Saldo TIDAK
+    // ditambah di sini: QRIS statis tidak memberi tahu aplikasi kapan uang
+    // masuk, jadi menambah saldo atas dasar tombol "sudah bayar" sama dengan
+    // membagikan saldo gratis. Yang dicatat adalah PERMINTAAN; admin
+    // mencocokkannya ke aplikasi GoPay merchant lalu menyetujui.
+    const bayar = await bayarTopUp({ amount });
 
-    // Jalur cadangan: gateway tidak tersedia. Saldo TIDAK ditambah di sini —
-    // QRIS statis tidak memberi tahu aplikasi kapan uang masuk, jadi menambah
-    // saldo atas dasar tombol "sudah bayar" sama dengan membagikan saldo
-    // gratis. Yang dicatat adalah PERMINTAAN; petugas mencocokkannya ke
-    // aplikasi merchant lalu menyetujui.
-    const ok = await payQRIS({ amount, title: "Top Up QuPay" });
-    if (!ok) return toast("Top up dibatalkan", "err");
+    if (bayar.error) {
+      // QRIS merchant tidak bisa dipakai. TIDAK membuat permintaan: tidak ada
+      // uang yang pernah masuk, jadi admin tidak akan menemukan apa pun untuk
+      // dicocokkan — permintaan itu hanya akan menyita perhatiannya.
+      console.error("Top up dibatalkan:", bayar.error);
+      return toast("QRIS merchant sedang tidak bisa dipakai. Hubungi petugas.", "err");
+    }
+    if (!bayar.ok) return toast("Top up dibatalkan", "err");
+
     try {
       await DB.topups.create(u.uid, { amount, name: u.name || "" });
     } catch (e) {
@@ -92,7 +84,7 @@ function topUpModal(u) {
     modal("Menunggu Konfirmasi", h("div", { style: "text-align:center" }, [
       h(".center", { style: "font-size:46px" }, "⏳"),
       h(".big-amt", { style: "margin:6px 0 10px", text: rupiah(amount) }),
-      h("p.muted", { html: "<small>Permintaan top up sudah dikirim. Saldo bertambah setelah petugas mencocokkan pembayaran Anda di aplikasi merchant.</small>" }),
+      h("p.muted", { html: "<small>Permintaan top up sudah dikirim. Saldo bertambah setelah admin mencocokkan pembayaran Anda di aplikasi GoPay merchant.</small>" }),
       h("button.btn", { style: "margin-top:16px", onclick: () => { $("#modalHost").innerHTML = ""; render(); } }, "Mengerti"),
     ]));
   };
@@ -109,18 +101,49 @@ function topUpModal(u) {
 // Kartu saldo QuPay + aksi cepat.
 // Angkanya dipisah jadi simpul sendiri supaya bisa diperbarui langganan tanpa
 // menggambar ulang seluruh kartu (tombolnya tidak boleh ikut berkedip).
+// Saldo awal akun baru adalah NOL (lihat catatan di data.js) — dulu layar
+// menjanjikan Rp 25.000 yang tidak pernah ada di dokumen mana pun. Supaya
+// Rp 0 tidak terbaca sebagai "saldo saya hilang", subjudulnya ikut berubah.
+const SUB_KOSONG = "Belum ada saldo — top up dulu untuk bayar tanpa uang tunai";
+const SUB_ADA = "Untuk pembayaran parkir tanpa uang tunai";
+
 function balanceCard(u, bal) {
   const amt = h(".amt", { text: rupiah(bal) });
+  const sub = h("p.sub", { text: bal > 0 ? SUB_ADA : SUB_KOSONG });
+  // Slot permintaan yang sedang menunggu admin. Kosong (dan tidak memakan
+  // ruang) selama tidak ada yang menunggu.
+  const tunggu = h(".acc-topup-wait", { hidden: true });
+  const tombolTopUp = h("button.primary", { type: "button", onclick: () => topUpModal(u) }, "＋ Top Up");
   const kartu = h(".acc-balance", {}, [
     h(".lbl", { text: "Saldo QuPay" }),
     amt,
-    h("p.sub", { text: "Untuk pembayaran parkir tanpa uang tunai" }),
+    sub,
+    tunggu,
     h(".acts", {}, [
-      h("button.primary", { type: "button", onclick: () => topUpModal(u) }, "＋ Top Up"),
+      tombolTopUp,
       h("button", { type: "button", onclick: () => go("#/riwayat") }, "🧾 Riwayat"),
     ]),
   ]);
-  kartu.setSaldo = (v) => { amt.textContent = rupiah(v); };
+  kartu.setSaldo = (v) => { amt.textContent = rupiah(v); sub.textContent = v > 0 ? SUB_ADA : SUB_KOSONG; };
+
+  // Persetujuan top up manual berarti ada jeda — bisa menit, bisa jam kalau
+  // admin sedang tidak membuka aplikasi. Tanpa penanda apa pun di layar, jeda
+  // itu terbaca sebagai "top up saya gagal", dan orang membayar untuk kedua
+  // kalinya. Karena itu permintaan yang menunggu ditampilkan di kartu saldo,
+  // bukan hanya sekali di modal yang sudah tertutup.
+  kartu.setMenunggu = (list) => {
+    tunggu.innerHTML = "";
+    tunggu.hidden = !list.length;
+    if (!list.length) { tombolTopUp.textContent = "＋ Top Up"; return; }
+    const total = list.reduce((a, t) => a + t.amount, 0);
+    tunggu.append(
+      h("span.ic", { "aria-hidden": "true", text: "⏳" }),
+      h("span", { text: list.length === 1
+        ? rupiah(total) + " menunggu konfirmasi admin"
+        : list.length + " permintaan (" + rupiah(total) + ") menunggu konfirmasi admin" }),
+    );
+    tombolTopUp.textContent = "＋ Top Up lagi";
+  };
   return kartu;
 }
 
@@ -135,10 +158,9 @@ function roleBar(u) {
 }
 
 export default async function akunPage(view) {
-  // Panaskan gateway sejak halaman dibuka: muat snap.js & konfigurasi sebelum
-  // tombol bayar ditekan. Tidak di-await — murni percepatan.
-  siapkanGateway();
-
+  // Halaman ini tidak lagi memanaskan gateway Midtrans: satu-satunya
+  // pembayaran di sini adalah top up, dan top up memakai QRIS merchant.
+  // Pemanasan tetap ada di halaman Status, tempat bayar parkir bisa lewat Snap.
   const u = Auth.current();
 
   // Petugas tidak memarkir kendaraan — dia bertugas di lokasi. Menampilkan
@@ -151,11 +173,19 @@ export default async function akunPage(view) {
   const bal = petugas ? 0 : await Promise.resolve(DB.wallet.get(u.uid));
   const kartuSaldo = petugas ? null : balanceCard(u, bal);
 
+  // Satu-satunya pintu masuk ke persetujuan top up. Dibuat sekali lalu
+  // ditempatkan di kelompok yang berbeda menurut peran (lihat kelolaItems):
+  // saldo pengguna hanya bertambah lewat halaman ini, jadi orang yang berhak
+  // menyetujui harus bisa menemukannya tanpa mengetik alamat.
+  const konfirmasiTopUp = (petugas || u.role === "admin")
+    ? item({ ic: "💠", t: "Konfirmasi Top Up", s: "Setujui setelah uang masuk di merchant", onclick: () => go("#/topup") })
+    : null;
+
   const akunItems = petugas ? [
     item({ ic: "🦺", t: "Dashboard Petugas", s: "Verifikasi kendaraan & KTA digital", onclick: () => go("#/petugas") }),
-    item({ ic: "💠", t: "Konfirmasi Top Up", s: "Setujui setelah uang masuk di merchant", onclick: () => go("#/topup") }),
+    konfirmasiTopUp,
     item({ ic: "🗺️", t: "Lokasi Parkir", s: "Kapasitas & keterisian tiap lokasi", onclick: () => go("#/cari") }),
-  ] : [
+  ].filter(Boolean) : [
     item({ ic: "🚗", t: "Kendaraan Saya", s: "Kelola motor & mobil terdaftar", onclick: () => go("#/kendaraan") }),
     item({ ic: "🧾", t: "Riwayat Parkir", s: "Semua sesi & pembayaran", onclick: () => go("#/riwayat") }),
     item({ ic: "🎫", t: "E-Ticket", s: "Tiket sesi parkir aktif", onclick: () => go("#/status") }),
@@ -165,6 +195,10 @@ export default async function akunPage(view) {
     // Admin memakai tab-bar pelanggan, jadi jalan masuk ke dashboard petugas
     // hanya ada di sini. Petugas sudah punya tab-nya sendiri.
     u.role === "admin" ? item({ ic: "🦺", t: "Dashboard Petugas", s: "Verifikasi kendaraan di lokasi", onclick: () => go("#/petugas") }) : null,
+    // Admin memakai menu pelanggan, jadi tanpa baris ini satu-satunya cara
+    // mencapai halaman persetujuan adalah mengetik #/topup — dan permintaan
+    // top up menggantung tanpa ada yang tahu.
+    u.role === "admin" ? konfirmasiTopUp : null,
     // panel admin adalah halaman tersendiri (admin.html), bukan rute SPA
     u.role === "admin" ? item({ ic: "🏛️", t: "Panel Admin", s: "Lokasi, promo, banner & QR", onclick: () => location.assign("admin.html") }) : null,
   ].filter(Boolean);
@@ -206,5 +240,18 @@ export default async function akunPage(view) {
   // ditambahkan webhook di server, jadi tidak ada tulisan dari halaman ini
   // yang bisa dijadikan penanda kapan harus menggambar ulang.
   const unsubSaldo = kartuSaldo ? DB.wallet.subscribe(u.uid, (v) => kartuSaldo.setSaldo(v)) : null;
-  return () => { unsubSaldo && unsubSaldo(); };
+  const unsubTunggu = kartuSaldo ? DB.topups.subscribeMine(u.uid, (l) => kartuSaldo.setMenunggu(l)) : null;
+
+  // Persetujuan top up itu manual, artinya ada orang yang uangnya sudah keluar
+  // sedang menunggu. Jumlahnya ditempel di menu supaya terlihat tanpa harus
+  // membuka halamannya lebih dulu.
+  const subT = konfirmasiTopUp?.querySelector(".s");
+  const unsubAntre = konfirmasiTopUp ? DB.topups.subscribePending((l) => {
+    subT.textContent = l.length
+      ? l.length + " permintaan menunggu persetujuan"
+      : "Setujui setelah uang masuk di merchant";
+    konfirmasiTopUp.classList.toggle("acc-antre", l.length > 0);
+  }) : null;
+
+  return () => { unsubSaldo && unsubSaldo(); unsubTunggu && unsubTunggu(); unsubAntre && unsubAntre(); };
 }

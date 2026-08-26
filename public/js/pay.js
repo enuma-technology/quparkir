@@ -13,7 +13,13 @@
 // jatuh ke jalur 2. Jadi menyalakan Midtrans tidak bisa mematikan jalur yang
 // sudah berhasil — itu syarat yang disepakati sebelum function ini ditulis.
 //
-// choosePayment() → pilih metode; payQRIS() → proses bayar non-QuPay.
+// TOP UP TIDAK memakai ketiganya. Ia punya jalurnya sendiri, bayarTopUp():
+// QRIS merchant asli saja, tanpa gateway dan tanpa mundur ke simulasi — saldo
+// hanya bertambah setelah admin mencocokkan uangnya di aplikasi GoPay merchant.
+// Alasannya ada di komentar fungsi itu.
+//
+// choosePayment() → pilih metode; payQRIS() → proses bayar non-QuPay;
+// bayarTopUp() → top up saldo.
 // ============================================================
 import { h, $, rupiah, modal, toast, tunggu } from "./util.js";
 import { renderQR } from "./qr.js";
@@ -97,6 +103,65 @@ function qrisMerchant({ amount, title }) {
         html: "<small>Petugas mencocokkan pembayaran di aplikasi merchant.</small>" }),
     ]);
     modal(title, body).then(() => resolve(false));
+  });
+}
+
+// ============================================================
+// Top up saldo — QRIS merchant asli, TANPA simulator dan TANPA gateway
+// ============================================================
+//
+// Top up sengaja dipisah dari payQRIS() dan tidak memakai lewatGateway():
+//
+//   • TANPA simulator. payQRIS() jatuh ke simulasiQRIS() kalau string QRIS-nya
+//     tidak bisa diurai — masuk akal untuk bayar parkir (sesi tetap harus bisa
+//     ditutup), tapi menyesatkan untuk top up: yang dihasilkan adalah SALDO,
+//     dan saldo dari QR palsu berarti saldo dari udara. Di sini kegagalan
+//     mengurai QRIS membatalkan top up, bukan memalsukannya.
+//
+//   • TANPA gateway Midtrans. Uang top up masuk ke rekening merchant GoPay dan
+//     dicocokkan admin di aplikasi merchant. Fungsi topUpGateway() di bawah
+//     tetap ada untuk saat akun produksi Midtrans disetujui, tapi tidak lagi
+//     dipanggil dari halaman Akun.
+//
+// Hasilnya:
+//   { ok: true }              → pengguna menyatakan sudah membayar
+//   { batal: true }           → modal ditutup tanpa konfirmasi
+//   { error: "<kode>" }       → QRIS merchant tidak bisa dipakai; JANGAN
+//                               membuat permintaan /topups untuk kasus ini
+export function bayarTopUp({ amount }) {
+  if (!paymentConfig.qrisStatic) return Promise.resolve({ error: "qris_kosong" });
+
+  let payload;
+  try {
+    payload = toDynamic(paymentConfig.qrisStatic, amount);
+  } catch (e) {
+    // String QRIS salah salin. Menampilkan QR yang pasti ditolak pemindai lalu
+    // menerima "saya sudah bayar" akan menghasilkan permintaan top up yang
+    // TIDAK MUNGKIN dicocokkan admin — tidak ada uang yang pernah masuk.
+    console.error("QRIS statis tidak bisa dipakai:", e);
+    return Promise.resolve({ error: "qris_rusak" });
+  }
+
+  return new Promise((resolve) => {
+    const qrEl = h(".qrbox");
+    renderQR(qrEl, payload, 220);
+    const body = h("div", { style: "text-align:center" }, [
+      h(".big-amt", { style: "margin:4px 0 12px", text: rupiah(amount) }),
+      qrEl,
+      h("p.muted", { style: "margin-top:8px",
+        html: "<small>Pindai dengan GoPay, DANA, OVO, ShopeePay, atau m-banking apa pun.<br>" +
+              "Nominal sudah terkunci — periksa angkanya sebelum menekan bayar.</small>" }),
+      h("button.btn", { style: "margin-top:14px",
+        onclick: () => { $("#modalHost").innerHTML = ""; resolve({ ok: true }); } },
+        "✅ Saya sudah bayar"),
+      // Dikatakan sejujurnya: tombol di atas BUKAN bukti bayar, dan saldo tidak
+      // bertambah karenanya. Orang yang mengira saldonya langsung naik akan
+      // menekan Top Up lagi dan membayar dua kali.
+      h("p.muted", { style: "margin-top:8px", html:
+        "<small>Saldo <b>belum</b> bertambah setelah ini. Admin mencocokkan nominal &amp; jam " +
+        "pembayaran Anda di aplikasi GoPay merchant, lalu menyetujuinya.</small>" }),
+    ]);
+    modal("Top Up QuPay", body).then(() => resolve({ batal: true }));
   });
 }
 
@@ -249,6 +314,12 @@ const payMidtrans = ({ sessionId }) =>
   lewatGateway({ endpoint: "/create-payment", muatan: { sessionId } });
 
 // Top up saldo lewat gateway.
+//
+// ⚠️ TIDAK DIPANGGIL SAAT INI. Halaman Akun memakai bayarTopUp() — QRIS
+// merchant + persetujuan admin — karena akun produksi Midtrans masih menunggu
+// verifikasi. Fungsi ini beserta netlify/functions/create-topup.js sengaja
+// dipertahankan utuh dan teruji: menyalakannya kembali cukup satu baris di
+// topUpModal(). Jangan dihapus sebagai "kode mati".
 //
 // Hasil { server: true } berarti saldo SUDAH ditambah webhook — pemanggil
 // tidak perlu (dan tidak boleh) membuat permintaan /topups untuk petugas.
