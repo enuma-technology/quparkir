@@ -140,17 +140,31 @@ export default async function akunPage(view) {
   siapkanGateway();
 
   const u = Auth.current();
-  const bal = await Promise.resolve(DB.wallet.get(u.uid));
-  const kartuSaldo = balanceCard(u, bal);
 
-  const akunItems = [
+  // Petugas tidak memarkir kendaraan — dia bertugas di lokasi. Menampilkan
+  // kartu saldo, "Kendaraan Saya", dan "E-Ticket" kepadanya bukan sekadar
+  // mubazir: itu menyiratkan dia punya sesi parkir sendiri, dan menyembunyikan
+  // dua pekerjaannya yang sesungguhnya di balik menu yang tidak relevan.
+  const petugas = u.role === "petugas";
+
+  // Saldo tidak perlu dibaca sama sekali kalau kartunya tidak ditampilkan.
+  const bal = petugas ? 0 : await Promise.resolve(DB.wallet.get(u.uid));
+  const kartuSaldo = petugas ? null : balanceCard(u, bal);
+
+  const akunItems = petugas ? [
+    item({ ic: "🦺", t: "Dashboard Petugas", s: "Verifikasi kendaraan & KTA digital", onclick: () => go("#/petugas") }),
+    item({ ic: "💠", t: "Konfirmasi Top Up", s: "Setujui setelah uang masuk di merchant", onclick: () => go("#/topup") }),
+    item({ ic: "🗺️", t: "Lokasi Parkir", s: "Kapasitas & keterisian tiap lokasi", onclick: () => go("#/cari") }),
+  ] : [
     item({ ic: "🚗", t: "Kendaraan Saya", s: "Kelola motor & mobil terdaftar", onclick: () => go("#/kendaraan") }),
     item({ ic: "🧾", t: "Riwayat Parkir", s: "Semua sesi & pembayaran", onclick: () => go("#/riwayat") }),
     item({ ic: "🎫", t: "E-Ticket", s: "Tiket sesi parkir aktif", onclick: () => go("#/status") }),
   ];
 
   const kelolaItems = [
-    u.role !== "pelanggan" ? item({ ic: "🦺", t: "Dashboard Petugas", s: "Check-in & check-out di lokasi", onclick: () => go("#/petugas") }) : null,
+    // Admin memakai tab-bar pelanggan, jadi jalan masuk ke dashboard petugas
+    // hanya ada di sini. Petugas sudah punya tab-nya sendiri.
+    u.role === "admin" ? item({ ic: "🦺", t: "Dashboard Petugas", s: "Verifikasi kendaraan di lokasi", onclick: () => go("#/petugas") }) : null,
     // panel admin adalah halaman tersendiri (admin.html), bukan rute SPA
     u.role === "admin" ? item({ ic: "🏛️", t: "Panel Admin", s: "Lokasi, promo, banner & QR", onclick: () => location.assign("admin.html") }) : null,
   ].filter(Boolean);
@@ -171,9 +185,9 @@ export default async function akunPage(view) {
       ]),
     ]),
 
-    h("div.pad", { style: "padding-bottom:0" }, [kartuSaldo]),
+    kartuSaldo ? h("div.pad", { style: "padding-bottom:0" }, [kartuSaldo]) : null,
 
-    group("Akun Saya", akunItems),
+    group(petugas ? "Tugas Saya" : "Akun Saya", akunItems),
     kelolaItems.length ? group("Kelola", kelolaItems) : null,
     MODE === "demo" ? group("Ganti Peran (demo)", roleBar(u)) : null,
 
@@ -191,6 +205,6 @@ export default async function akunPage(view) {
   // Saldo mengikuti dokumen profil secara langsung: top up lewat gateway
   // ditambahkan webhook di server, jadi tidak ada tulisan dari halaman ini
   // yang bisa dijadikan penanda kapan harus menggambar ulang.
-  const unsubSaldo = DB.wallet.subscribe(u.uid, (v) => kartuSaldo.setSaldo(v));
+  const unsubSaldo = kartuSaldo ? DB.wallet.subscribe(u.uid, (v) => kartuSaldo.setSaldo(v)) : null;
   return () => { unsubSaldo && unsubSaldo(); };
 }

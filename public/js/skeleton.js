@@ -121,10 +121,18 @@ const PAGES = {
       ${box("skel-btn")}
     </div>`,
 
+  // header() penuh, bukan "simple": sejak petugas punya tab-bar sendiri,
+  // halaman ini memakai appHeader seperti beranda — kerangka yang lebih pendek
+  // membuat isinya melompat naik saat data tiba.
   "#/petugas": () => `
-    ${header("simple")}
+    ${header()}
     <div class="skel-pad">${stats()}<div class="skel-card center">${line("w40")}${box("skel-qr sm")}</div></div>
     ${section(head())}
+    <div class="skel-pad list">${many(3, () => li())}</div>`,
+
+  "#/topup": () => `
+    ${header()}
+    <div class="skel-pad">${box("skel-card")}</div>
     <div class="skel-pad list">${many(3, () => li())}</div>`,
 
   // Halaman auth berlatar gelap — kerangkanya ikut gelap supaya tidak berkedip putih.

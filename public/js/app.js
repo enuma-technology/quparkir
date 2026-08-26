@@ -15,25 +15,83 @@ import checkinPage from "./pages/checkin.js";
 import statusPage from "./pages/status.js";
 import riwayatPage from "./pages/riwayat.js";
 import akunPage from "./pages/akun.js";
-import petugasPage from "./pages/petugas.js";
+import petugasPage, { topupPetugasPage } from "./pages/petugas.js";
 // Dashboard admin kini berdiri sendiri di admin.html (js/admin-panel.js) —
 // rute #/admin dihapus agar tidak ada dua panel yang harus disamakan.
 
 // ---- chrome (tabbar) ----
 const AUTH_PAGES = ["#/login", "#/register"];
+// Isi tab-bar menurut peran. Petugas dan pelanggan memakai app yang sama tapi
+// mengerjakan hal yang sama sekali berbeda: pelanggan mencari parkir dan
+// membayar, petugas memverifikasi kendaraan dan mencocokkan top up. Menyodorkan
+// "Cari Parkir" dan kartu saldo kepada petugas bukan sekadar mubazir — itu
+// membuat pekerjaan yang sebenarnya (verifikasi) tenggelam di antara menu yang
+// tidak pernah dia sentuh.
+const TAB = {
+  pelanggan: [
+    { go: "#/home", ic: "🏠", t: "Home" },
+    { go: "#/riwayat", ic: "🕘", t: "Aktivitas" },
+    null,                                   // slot FAB
+    { go: "#/cari", ic: "🗺️", t: "Cari" },
+    { go: "#/akun", ic: "👤", t: "Akun" },
+  ],
+  petugas: [
+    { go: "#/petugas", ic: "🦺", t: "Petugas" },
+    { go: "#/topup", ic: "💠", t: "Top Up" },
+    null,
+    { go: "#/cari", ic: "🗺️", t: "Lokasi" },
+    { go: "#/akun", ic: "👤", t: "Akun" },
+  ],
+};
+
+// Peran non-petugas (pelanggan & admin) memakai tab pelanggan: admin mengelola
+// lewat admin.html, bukan lewat tab-bar ini.
+const tabUntuk = (u) => (u?.role === "petugas" ? "petugas" : "pelanggan");
+
+let tabTerpasang = null;
+function paintTabbar(u) {
+  const jenis = tabUntuk(u);
+  if (tabTerpasang === jenis) return;
+  const tab = $("#tabbar");
+  const fab = tab.querySelector(".fab-slot");     // dipertahankan, bukan dibuat ulang
+  tab.innerHTML = "";
+  TAB[jenis].forEach((item) => {
+    if (!item) { tab.append(fab); return; }
+    const b = document.createElement("button");
+    b.dataset.go = item.go;
+    b.innerHTML = "<span></span><small></small>";
+    b.firstChild.textContent = item.ic;
+    b.lastChild.textContent = item.t;
+    b.addEventListener("click", () => go(item.go));
+    tab.append(b);
+  });
+  const fabBtn = $("#fabScan");
+  const label = jenis === "petugas" ? "Pindai e-ticket kendaraan" : "Scan QRIS untuk check-in";
+  fabBtn.title = label;
+  fabBtn.setAttribute("aria-label", label);
+  tabTerpasang = jenis;
+}
+
 function updateChrome() {
   const path = current();
   const u = window.__AUTH?.current();
   const tab = $("#tabbar");
   const authPage = AUTH_PAGES.includes(path);
   tab.hidden = authPage || !u;
+  if (u) paintTabbar(u);
   $$("#tabbar > button[data-go]").forEach(b => b.classList.toggle("active", b.dataset.go === path));
   $("#view").classList.toggle("noTab", tab.hidden);
 }
 
 function wireNav() {
-  $$("#tabbar > button[data-go]").forEach(b => b.addEventListener("click", () => go(b.dataset.go)));
-  $("#fabScan").addEventListener("click", () => go("#/checkin"));
+  // Tombol pindai berarti dua hal berbeda menurut peran: pelanggan memindai QR
+  // lokasi untuk check-in, petugas memindai e-ticket untuk verifikasi. Perannya
+  // dibaca saat DITEKAN, bukan saat dipasang — peran bisa berubah setelah
+  // login/logout tanpa halaman dimuat ulang.
+  $("#fabScan").addEventListener("click", () => {
+    const u = window.__AUTH?.current();
+    go(u?.role === "petugas" ? "#/petugas?scan=1" : "#/checkin");
+  });
 }
 
 // ---- ingatan halaman tujuan (bertahan lewat redirect Google) ----
@@ -66,7 +124,13 @@ async function main() {
   // routes
   route("#/login", loginPage);
   route("#/register", registerPage);
-  route("#/home", guard(homePage));
+  // Beranda pelanggan tidak pernah jadi milik petugas: kalaupun dibuka lewat
+  // tautan lama atau riwayat peramban, petugas dialihkan ke dashboard-nya.
+  route("#/home", guard(async (view) => {
+    const u = window.__AUTH.current();
+    if (u?.role === "petugas") { go("#/petugas"); return; }
+    return homePage(view);
+  }));
   route("#/cari", guard(cariPage));
   route("#/kendaraan", guard(kendaraanPage));
   route("#/checkin", guard(checkinPage));
@@ -74,6 +138,7 @@ async function main() {
   route("#/riwayat", guard(riwayatPage));
   route("#/akun", guard(akunPage));
   route("#/petugas", guard(petugasPage, { roles: ["petugas", "admin"] }));
+  route("#/topup", guard(topupPetugasPage, { roles: ["petugas", "admin"] }));
   // #/admin sengaja tidak didaftarkan lagi — panel admin pindah ke admin.html.
   // Tautan/bookmark lama diarahkan ke sana lewat redirect di bawah.
   route("#/admin", () => { location.replace("admin.html"); });
