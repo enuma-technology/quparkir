@@ -72,6 +72,23 @@ const masuk = async (email) => {
   await page.waitForSelector("#tabbar:not([hidden])", { timeout: 20000 });
 };
 
+// Membuat akun langsung di Auth emulator, tanpa lewat UI. Dipakai untuk akun
+// PERAN (petugas/admin) yang memang tidak pernah dibuat lewat form pendaftaran.
+const AUTH_EMU = "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=palsu";
+const buatAkunPeran = async (email, nama, peran) => {
+  const r = await fetch(AUTH_EMU, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password: "rahasia123", returnSecureToken: true }),
+  });
+  const b = await r.json();
+  if (!r.ok) throw new Error("buat akun " + email + " gagal: " + JSON.stringify(b).slice(0, 200));
+  await api(`/users/${b.localId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ fields: { name: { stringValue: nama }, email: { stringValue: email }, role: { stringValue: peran } } }),
+  });
+  return b.localId;
+};
+
 const keluar = async () => {
   await page.evaluate(() => (location.hash = "#/akun"));
   await page.click("button:has-text('Keluar')");
@@ -91,21 +108,30 @@ try {
   await api(`/users/${adminUid}?updateMask.fieldPaths=role`, {
     method: "PATCH", body: JSON.stringify({ fields: { role: { stringValue: "admin" } } }),
   });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector("#tabbar:not([hidden])", { timeout: 20000 });
-  ok("Role admin dibaca app dari Firestore (users/{uid}.role)");
 
-  // ---------- 3. Seeding lokasi dari Panel Admin ----------
-  // Panel admin BERDIRI SENDIRI di admin.html (bukan rute di dalam SPA) —
-  // gerbangnya sandi statis (lihat admin-panel.js), terpisah dari role
-  // Firebase. Sesi Firebase "Admin Uji" (role=admin) tetap terbawa lintas
-  // halaman (origin sama), jadi tulis Firestore di sini tetap lolos rules.
-  await page.goto("http://127.0.0.1:5000/admin", { waitUntil: "domcontentloaded" });
+  // Akun yang sama, sekarang ber-role admin, memuat ulang app pelanggan.
+  // Yang benar: app TIDAK terbuka sama sekali — akun admin dialihkan ke
+  // /admin. Tab-bar yang sempat muncul di sini berarti admin masih bisa
+  // memakai app pelanggan, persis yang ditutup.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForURL(/\/admin(\?|#|$)/, { timeout: 20000 });
+  if (await page.locator("#tabbar:not([hidden])").count())
+    throw new Error("tab-bar app sempat tergambar untuk akun admin");
+  ok("Akun admin dialihkan keluar dari app pelanggan → /admin");
+  if (!/dari=app/.test(page.url())) throw new Error("penanda ?dari=app hilang: " + page.url());
+  await page.waitForSelector(".auth-notice", { timeout: 15000 });
+  ok("Gerbang panel menjelaskan kenapa halamannya berpindah");
+
+  // ---------- 3. Masuk Panel Admin & seeding lokasi ----------
+  // Gerbangnya kini Firebase Auth + role admin — akun yang SAMA yang dipakai
+  // Firestore Rules untuk memutuskan hak tulis. Sebelumnya di sini ada sandi
+  // statis yang tertulis di admin-panel.js dan terbaca siapa pun di DevTools.
   await page.waitForSelector(".auth-card", { timeout: 20000 });
-  await page.fill("input[placeholder='admin']", "admin");
-  await page.fill("input[placeholder='Kata sandi']", "admin234156");
+  await page.fill("input[type='email']", "admin@quparkir.test");
+  await page.fill("input[placeholder='Kata sandi']", "rahasia123");
   await page.click("button:has-text('Masuk')");
   await page.waitForSelector(".admin-tabs", { timeout: 20000 });
+  ok("Admin masuk Panel Admin dengan akun Firebase-nya sendiri");
   await page.click(".admin-tabs button:has-text('Lokasi')");
   await page.waitForSelector("h2:has-text('Lokasi Parkir')", { timeout: 10000 });
   // ensureSeed() otomatis jalan (fire-and-forget) begitu SIAPA PUN login —
@@ -129,19 +155,25 @@ try {
   ok("Seeding kantong parkir → koleksi locations", locs.map(l => flat(l).name).join(", "));
   await page.screenshot({ path: SHOT + "/1-admin.png" });
 
-  // kembali ke aplikasi pelanggan untuk sisa alur (sesi Firebase tetap terbawa)
-  await page.goto(APP, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector("#tabbar:not([hidden])", { timeout: 20000 });
+  // Akun petugas disiapkan sekarang, langsung di Auth emulator: akun PERAN
+  // tidak pernah lahir dari form pendaftaran (rules melarang klien menulis
+  // `role`), jadi membuatnya lewat UI hanya akan meniru sesuatu yang tidak
+  // pernah terjadi.
+  const petugasUid = await buatAkunPeran("petugas@quparkir.test", "Petugas Uji", "petugas");
+  ok("Akun petugas disiapkan", "uid=" + petugasUid);
 
   // ---------- 4. Alur pelanggan biasa (BUKAN admin → rules diuji sungguhan) ----------
-  await page.evaluate(() => (location.hash = "#/akun"));
-  await page.click("button:has-text('Keluar')");
-  await page.waitForSelector(".auth-card", { timeout: 15000 });
-  ok("Logout kembali ke halaman masuk");
+  // Keluar dari sesi admin lewat panel, bukan lewat app: app tidak bisa dibuka
+  // akun admin sama sekali sekarang.
+  await page.click(".adm-top button:has-text('Keluar'), button:has-text('Keluar')");
+  await page.waitForSelector(".auth-card", { timeout: 20000 });
+  ok("Logout dari Panel Admin kembali ke gerbangnya");
+  await page.goto(APP, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".auth-card", { timeout: 20000 });
 
   await daftar("Pelanggan Uji", "pelanggan@quparkir.test");
   const uid = await waitFor(async () =>
-    (await listDocs("users")).map(d => d.name.split("/").pop()).find(x => x !== adminUid),
+    (await listDocs("users")).map(d => d.name.split("/").pop()).find(x => x !== adminUid && x !== petugasUid),
     "dokumen users/{uid} pelanggan baru");
   ok("Pelanggan baru terdaftar", "uid=" + uid);
   await page.screenshot({ path: SHOT + "/2-home.png" });
@@ -212,7 +244,9 @@ try {
   // ---------- Fase PETUGAS: verifikasi e-ticket milik pelanggan lain ----------
   const sesId = (await listDocs("sessions"))[0].name.split("/").pop();
   await keluar();
-  await masuk("admin@quparkir.test");           // role admin ⊃ akses petugas
+  // Akun PETUGAS, bukan admin: sejak akun admin dialihkan keluar dari app,
+  // dashboard petugas hanya bisa dicapai oleh peran petugas.
+  await masuk("petugas@quparkir.test");
   await page.evaluate(() => (location.hash = "#/petugas"));
   await page.waitForSelector("text=Dashboard Petugas", { timeout: 15000 });
   await page.waitForSelector(".li .t:has-text('AD 1234 XY')", { timeout: 20000 });
@@ -279,7 +313,16 @@ try {
   // QR yang tampil harus QRIS merchant SUNGGUHAN. Kalau simulator sempat
   // muncul di jalur top up, saldo bisa lahir dari QR palsu — justru itu yang
   // ditutup, jadi kehadirannya di sini adalah kegagalan.
-  await page.waitForSelector(".modal .qrbox canvas, .modal .qrbox svg, .modal .qrbox img", { timeout: 15000 });
+  // JANGAN menunggu <canvas> atau <img> tertentu terlihat: qrcodejs membuat
+  // KEDUANYA lalu menyembunyikan salah satu (canvas digambar, lalu diubah jadi
+  // data-URL di <img>), dan mana yang disembunyikan berbeda antar-jalankan.
+  // Menunggu elemen pertama yang cocok karena itu kadang menunggu simpul yang
+  // memang sengaja display:none — gagal acak tanpa ada yang rusak.
+  await page.waitForSelector(".modal .qrbox", { state: "visible", timeout: 15000 });
+  await page.waitForFunction(() => {
+    const b = document.querySelector(".modal .qrbox");
+    return !!b && b.querySelectorAll("canvas, img, svg").length > 0;
+  }, null, { timeout: 15000 });
   if (await page.locator(".modal:has-text('MODE SIMULASI')").count())
     throw new Error("top up jatuh ke simulator — seharusnya QRIS merchant asli");
   ok("Top up memakai QRIS merchant asli, bukan simulator");
@@ -309,19 +352,18 @@ try {
 
   // Admin menyetujui dari halaman Konfirmasi Top Up.
   await keluar();
-  await masuk("admin@quparkir.test");
-  // Lewat MENU, bukan dengan mengetik hash. Admin memakai menu pelanggan, jadi
-  // baris "Konfirmasi Top Up" di kelompok Kelola adalah satu-satunya jalan
-  // masuknya — kalau hilang, permintaan top up menggantung tanpa ada yang tahu.
+  await masuk("petugas@quparkir.test");
+  // Lewat MENU, bukan dengan mengetik hash — kalau barisnya hilang, permintaan
+  // top up menggantung tanpa ada yang tahu.
   await page.evaluate(() => (location.hash = "#/akun"));
   const menuTopUp = page.locator(".acc-item:has-text('Konfirmasi Top Up')");
   await menuTopUp.waitFor({ timeout: 15000 });
   await page.waitForSelector(".acc-item.acc-antre:has-text('permintaan menunggu persetujuan')", { timeout: 15000 });
-  ok("Menu admin menandai ada permintaan top up menunggu");
+  ok("Menu petugas menandai ada permintaan top up menunggu");
   await menuTopUp.click();
   await page.waitForSelector("text=Konfirmasi Top Up", { timeout: 15000 });
   await page.waitForSelector(`.li .t:has-text('${minta.amount.toLocaleString("id-ID")}')`, { timeout: 20000 });
-  ok("Admin melihat permintaan top up yang menunggu");
+  ok("Petugas melihat permintaan top up yang menunggu");
   await page.screenshot({ path: SHOT + "/9-topup-admin.png" });
   await page.click("button:has-text('Setujui')");
 
@@ -329,7 +371,7 @@ try {
     const w = flat(await api(`/users/${uid}`)).wallet ?? 0;
     return w === saldoAwal + minta.amount ? w : null;
   }, "saldo bertambah setelah persetujuan admin");
-  ok("Admin menyetujui → saldo bertambah", `Rp ${saldoAwal} → Rp ${sesudah}`);
+  ok("Petugas menyetujui → saldo bertambah", `Rp ${saldoAwal} → Rp ${sesudah}`);
 
   const tuntas = (await listDocs("topups")).map(flat).find(t => t.uid === uid);
   if (tuntas.status !== "approved") throw new Error("permintaan tidak ditandai approved: " + tuntas.status);

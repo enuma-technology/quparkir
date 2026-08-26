@@ -44,9 +44,30 @@ const TAB = {
   ],
 };
 
-// Peran non-petugas (pelanggan & admin) memakai tab pelanggan: admin mengelola
-// lewat admin.html, bukan lewat tab-bar ini.
+// Admin tidak pernah sampai ke sini — ia dialihkan ke admin.html (lihat
+// alihkanAdmin). Yang tersisa: petugas atau pelanggan.
 const tabUntuk = (u) => (u?.role === "petugas" ? "petugas" : "pelanggan");
+
+// ---- admin bukan pengguna app ini ----
+//
+// Panel admin berdiri sendiri di /admin, dan di sanalah akun admin masuk.
+// Membiarkannya juga memakai app pelanggan berarti dua pintu masuk untuk satu
+// akun yang boleh menyunting lokasi, promo, dan menyetujui top up.
+//
+// Dialihkan, BUKAN di-logout. Firebase menyimpan sesi per-origin, jadi
+// admin.html dan app.html berbagi sesi yang sama: logout di sini akan ikut
+// memutus sesi panel yang mungkin sedang terbuka di tab lain. Mengalihkan
+// menutup akses ke app tanpa merusak apa pun.
+//
+// `?dari=app` hanya penanda supaya gerbang panel bisa menjelaskan kenapa
+// pengguna tiba-tiba pindah halaman setelah menekan Masuk.
+let mengalihkan = false;
+function alihkanAdmin(u) {
+  if (u?.role !== "admin" || mengalihkan) return false;
+  mengalihkan = true;
+  location.replace("admin.html?dari=app");
+  return true;
+}
 
 let tabTerpasang = null;
 function paintTabbar(u) {
@@ -75,6 +96,7 @@ function paintTabbar(u) {
 function updateChrome() {
   const path = current();
   const u = window.__AUTH?.current();
+  if (alihkanAdmin(u)) return;
   const tab = $("#tabbar");
   const authPage = AUTH_PAGES.includes(path);
   tab.hidden = authPage || !u;
@@ -110,6 +132,9 @@ function guard(fn, { roles } = {}) {
   return async (view) => {
     const u = window.__AUTH.current();
     if (!u) { rememberRedirect(location.hash || "#/home"); go("#/login"); return; }
+    // Lapis kedua: kalau sebuah rute sempat dirender sebelum pengalihan di
+    // updateChrome() berjalan, halaman pelanggan tidak boleh ikut tergambar.
+    if (alihkanAdmin(u)) return;
     if (roles && !roles.includes(u.role)) {
       // Pesan dan tujuannya disesuaikan peran. Melempar petugas ke "#/home"
       // dengan pesan "Akses khusus pelanggan" membingungkan: dia bukan
@@ -130,6 +155,9 @@ async function main() {
   window.__AUTH = Auth;
 
   // routes
+  // "admin" sengaja TIDAK tercantum di satu pun daftar peran: akun admin
+  // dialihkan keluar dari app sebelum rute mana pun sempat dirender (lihat
+  // alihkanAdmin). Mencantumkannya hanya akan menyiratkan jalur yang tidak ada.
   route("#/login", loginPage);
   route("#/register", registerPage);
   // Beranda pelanggan tidak pernah jadi milik petugas: kalaupun dibuka lewat
@@ -140,13 +168,13 @@ async function main() {
     return homePage(view);
   }));
   route("#/cari", guard(cariPage));
-  route("#/kendaraan", guard(kendaraanPage, { roles: ["pelanggan", "admin"] }));
-  route("#/checkin", guard(checkinPage, { roles: ["pelanggan", "admin"] }));
-  route("#/status", guard(statusPage, { roles: ["pelanggan", "admin"] }));
+  route("#/kendaraan", guard(kendaraanPage, { roles: ["pelanggan"] }));
+  route("#/checkin", guard(checkinPage, { roles: ["pelanggan"] }));
+  route("#/status", guard(statusPage, { roles: ["pelanggan"] }));
   route("#/riwayat", guard(riwayatPage));
   route("#/akun", guard(akunPage));
-  route("#/petugas", guard(petugasPage, { roles: ["petugas", "admin"] }));
-  route("#/topup", guard(topupPetugasPage, { roles: ["petugas", "admin"] }));
+  route("#/petugas", guard(petugasPage, { roles: ["petugas"] }));
+  route("#/topup", guard(topupPetugasPage, { roles: ["petugas"] }));
   // #/admin sengaja tidak didaftarkan lagi — panel admin pindah ke admin.html.
   // Tautan/bookmark lama diarahkan ke sana lewat redirect di bawah.
   route("#/admin", () => { location.replace("admin.html"); });
@@ -181,6 +209,7 @@ async function main() {
   // hashchange & tidak menumpuk riwayat, jadi tak ada kedipan halaman auth).
   const u0 = Auth.current();
   const p0 = current();
+  if (alihkanAdmin(u0)) return;
   if (!u0 && !AUTH_PAGES.includes(p0)) {
     rememberRedirect(location.hash || "#/home");
     history.replaceState(null, "", "#/login");
@@ -191,6 +220,10 @@ async function main() {
   // reaktif: kalau status auth berubah (login/logout/sesi kedaluwarsa), arahkan
   let seeded = false;
   Auth.onChange(async (u) => {
+    // Paling awal: sebelum ensureSeed, sebelum navigasi apa pun. Inilah yang
+    // menangkap "akun admin mengetik sandinya di halaman masuk pelanggan" —
+    // login-nya sendiri berhasil di Firebase, tapi app tidak pernah terbuka.
+    if (alihkanAdmin(u)) return;
     const path = current();
     if (u && !seeded) { seeded = true; const { DB } = await import("./data.js"); DB.ensureSeed && DB.ensureSeed(); }
     // logout / sesi habis → ke login (tanpa menyimpan tujuan: mulai bersih)

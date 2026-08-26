@@ -168,6 +168,28 @@ async function firebaseAuth() {
   };
 }
 
+// Menunggu status auth benar-benar membawa penggunanya BESERTA role.
+//
+// Auth.loginEmail() selesai begitu Firebase menerima kredensialnya, tapi
+// `role` baru terisi di dalam onAuthStateChanged — yang membaca users/{uid}
+// dari Firestore, jadi berjalan setelah promise login sudah selesai. Membaca
+// Auth.current()?.role tepat setelah await login akan mendapat null (atau,
+// lebih buruk, role SESI SEBELUMNYA yang belum tergantikan).
+//
+// `email` dipakai untuk memastikan yang ditunggu memang akun yang baru masuk,
+// bukan sesi lama yang kebetulan masih terpasang. Timeout memulangkan apa
+// adanya: pemanggil yang butuh kepastian role harus memperlakukan null sebagai
+// "tidak diketahui", bukan "bukan admin".
+export function tungguSesi({ email = null, timeoutMs = 8000 } = {}) {
+  const cocok = (u) => u && (!email || String(u.email || "").toLowerCase() === String(email).toLowerCase());
+  return new Promise((resolve) => {
+    let unsub = null, selesai = false;
+    const tutup = (u) => { if (selesai) return; selesai = true; clearTimeout(t); unsub && unsub(); resolve(u); };
+    const t = setTimeout(() => tutup(Auth?.current?.() || null), timeoutMs);
+    unsub = Auth.onChange((u) => { if (cocok(u)) tutup(u); });
+  });
+}
+
 export async function initAuth() {
   if (USE_FIREBASE) { try { Auth = await firebaseAuth(); return; } catch (e) { console.warn("Firebase Auth gagal, DEMO:", e); } }
   Auth = demoAuth();

@@ -191,6 +191,10 @@ const admHead = (aksi = false) => `<div class="skel-head">${line("w40")}${aksi ?
 export const ADMIN_TABS = [
   { id: "ringkasan", label: "📊 Ringkasan" },
   { id: "lokasi", label: "🅿️ Lokasi" },
+  // Persetujuan top up ada DI SINI, bukan hanya di app: sejak akun admin
+  // dialihkan keluar dari app.html (lihat alihkanAdmin di app.js), #/topup
+  // tidak lagi terjangkau olehnya. Petugas tetap memakai yang di app.
+  { id: "topup", label: "💠 Top Up" },
   { id: "promo", label: "🎁 Promo" },
   { id: "banner", label: "📣 Banner" },
   { id: "qris", label: "🧾 Export QRIS" },

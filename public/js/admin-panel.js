@@ -1,38 +1,41 @@
 // ============================================================
 // Panel Admin (admin.html) — CMS ringan untuk lokasi parkir, promo,
-// banner beranda, dan ekspor QR. Halaman BERDIRI SENDIRI di luar SPA
-// #/admin (yang memakai role Firebase); di sini gerbang masuknya
-// username/password statis sesuai permintaan.
+// banner beranda, dan ekspor QR.
+//
+// Halaman ini adalah SATU-SATUNYA pintu masuk akun admin. app.html
+// mengalihkan setiap sesi ber-role admin ke sini (lihat alihkanAdmin di
+// app.js), jadi admin tidak punya jalan lain — dan sebaliknya, akun
+// non-admin tidak bisa lewat sini.
 // ============================================================
 import { h, $, rupiah, toast, modal, showVersion } from "./util.js";
 import { authShell, field, setError, clearError, busy, markAuthView } from "./parts.js";
 import { initData, DB, MODE } from "./data.js";
-import { initAuth, Auth } from "./auth.js";
+import { initAuth, Auth, tungguSesi } from "./auth.js";
 import { renderQR } from "./qr.js";
 import { toDynamic, validateQris } from "./qris.js";
 import { adminPartNode, ADMIN_TABS } from "./skeleton.js";
 import { SESSION_KEY, currentTab } from "./admin-boot.js";
 import { resolveLocationInput } from "./geo-input.js";
 
-// ⚠️ CATATAN KEAMANAN — WAJIB DIBACA SEBELUM DIPAKAI DI PRODUKSI:
-// Username & password di bawah ini tersimpan sebagai teks polos di berkas JS
-// yang dikirim ke browser siapa pun yang membuka admin.html — SIAPA SAJA bisa
-// membacanya lewat "View Source"/DevTools. Gerbang ini hanya mencegah akses
-// tak sengaja, BUKAN perlindungan sungguhan.
+// Gerbangnya adalah Firebase Auth + `users/{uid}.role == "admin"` — akun yang
+// sama yang dipakai Firestore Rules untuk memutuskan boleh-tidaknya menulis.
 //
-// Pengaman yang SEBENARNYA saat mode Firebase aktif adalah Firestore Rules:
-// menulis locations/promos/banners menuntut akun Firebase Auth ber-role
-// "admin". Karena itu halaman ini WAJIB memanggil initAuth() — tanpa itu
-// Firestore berjalan tanpa token sama sekali dan SEMUA penulisan ditolak
-// (bahkan membaca `transactions` gagal, sehingga pendapatan selalu Rp 0).
-// Lolos gerbang sandi di bawah TIDAK memberi hak tulis apa pun dengan
-// sendirinya. Untuk keamanan sungguhan, ganti gerbang ini dengan Firebase
-// Auth + custom claim/role, idealnya lewat Cloud Functions.
-const ADMIN_USER = "admin";
-const ADMIN_PASS = "admin234156";
+// Sebelum 26 Agu 2026 gerbang ini berupa username/password STATIS yang
+// tertulis di berkas JS ini, jadi terbaca siapa pun lewat DevTools; hak tulis
+// sesungguhnya tetap datang dari akun Firebase yang harus dimasukkan TERPISAH
+// lewat app.html#/login di tab lain. Dua kredensial untuk satu pekerjaan, yang
+// satu palsu — dan sejak app.html menolak akun admin, jalur itu bahkan tidak
+// ada lagi. Sekarang satu login saja, dan yang membukanya persis yang memberi
+// hak tulis.
+//
+// initAuth() tetap WAJIB dipanggil di sini: Firestore mengambil token dari
+// instance Auth pada FirebaseApp yang sama. Tanpa itu request berangkat tanpa
+// token dan semua rules ber-syarat isSignedIn()/isAdmin() menolaknya (bahkan
+// membaca `transactions` gagal, sehingga pendapatan selalu Rp 0).
 
-// sessionStorage (bukan localStorage): sesi admin berakhir saat tab ditutup,
-// mengurangi risiko tertinggal login di komputer bersama.
+// sessionStorage (bukan localStorage): panel terkunci lagi saat tab ditutup,
+// mengurangi risiko tertinggal terbuka di komputer bersama. Sesi Firebase-nya
+// sendiri memang bertahan — yang per-tab hanyalah kunci panel ini.
 const isLoggedIn = () => { try { return sessionStorage.getItem(SESSION_KEY) === "1"; } catch { return false; } };
 const setLoggedIn = (v) => { try { v ? sessionStorage.setItem(SESSION_KEY, "1") : sessionStorage.removeItem(SESSION_KEY); } catch {} };
 
@@ -71,33 +74,61 @@ let unmarkAuth = null;
 // menunggunya sebelum boot() menyentuh DB
 let siap = Promise.resolve();
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function renderLogin(root) {
   $("#app").classList.remove("wide");
   root.innerHTML = "";
   unmarkAuth = markAuthView();
 
-  const user = h("input.input", { type: "text", placeholder: "admin", autocomplete: "username", autocapitalize: "off", autocorrect: "off" });
+  // Datang dari app.html karena akunnya ternyata admin (lihat alihkanAdmin di
+  // app.js). Tanpa penjelasan, berpindah halaman sendiri setelah menekan Masuk
+  // terbaca seperti kerusakan.
+  const dariApp = new URLSearchParams(location.search).get("dari") === "app";
+
+  const email = h("input.input", { type: "email", placeholder: "admin@quparkir.com", autocomplete: "email", inputmode: "email", autocapitalize: "off", autocorrect: "off" });
   const pass = h("input.input", { type: "password", placeholder: "Kata sandi", autocomplete: "current-password" });
   const btn = h("button.btn", { type: "submit" }, "Masuk");
 
-  function submit() {
-    const u = user.value.trim(), p = pass.value;
-    if (!u) return setError(user, "Username wajib diisi");
+  async function submit() {
+    const e = email.value.trim(), p = pass.value;
+    if (!e) return setError(email, "Email wajib diisi");
+    if (!EMAIL_RE.test(e)) return setError(email, "Format email tidak valid");
     if (!p) return setError(pass, "Kata sandi wajib diisi");
-    clearError(user); clearError(pass);
+    clearError(email); clearError(pass);
     busy(btn, true, "Memeriksa…");
-    // Jeda kosmetik saja (terasa "memproses") — bukan pengaman. Lihat catatan
-    // keamanan di atas berkas ini.
-    setTimeout(async () => {
-      if (u !== ADMIN_USER || p !== ADMIN_PASS) {
-        busy(btn, false, "Masuk"); setError(pass, "Username atau kata sandi salah"); return;
-      }
-      setLoggedIn(true);
-      // DB mungkin masih dimuat di latar — boot() menyentuhnya, jadi tunggu dulu
-      await siap;
-      toast("Berhasil masuk", "ok");
-      boot(root);
-    }, 250);
+
+    // Gerbang tampil sebelum SDK Firebase selesai diunduh, jadi Auth belum
+    // tentu ada saat tombol ditekan.
+    await siap;
+
+    try {
+      await Auth.loginEmail(e, p);
+    } catch (err) {
+      busy(btn, false, "Masuk");
+      setError(pass, err.message || "Email atau kata sandi salah");
+      return;
+    }
+
+    // Kredensialnya benar — sekarang perannya. `role` dibaca dari Firestore di
+    // dalam onAuthStateChanged, jadi belum tentu terisi tepat setelah login
+    // selesai; tungguSesi() menunggu status auth yang benar-benar membawanya.
+    const u = await tungguSesi({ email: e });
+    if (u?.role !== "admin") {
+      // Sesinya diputus: akun non-admin tidak boleh meninggalkan sesi hidup di
+      // halaman ini. Sesi Firebase dipakai bersama app.html, dan membiarkannya
+      // berarti orang itu masuk ke app tanpa pernah menekan Masuk di sana.
+      await Auth.logout().catch(() => {});
+      busy(btn, false, "Masuk");
+      setError(pass, u
+        ? "Akun ini bukan admin. Panel ini khusus akun admin."
+        : "Peran akun tidak terbaca — periksa koneksi lalu coba lagi.");
+      return;
+    }
+
+    setLoggedIn(true);
+    toast("Berhasil masuk sebagai admin", "ok");
+    boot(root);
   }
 
   root.append(authShell({
@@ -106,19 +137,28 @@ function renderLogin(root) {
     title: "Masuk Panel Admin",
     sub: "Kelola lokasi parkir, promo, banner beranda, dan QR check-in.",
     onsubmit: submit,
-    card: [field("Username", user), field("Kata sandi", pass, { toggle: true }), btn],
+    card: [field("Email admin", email), field("Kata sandi", pass, { toggle: true }), btn],
     // tautan pelanggan ("Tentang", "Bantuan") tidak relevan di gerbang internal;
     // yang dibutuhkan justru jalan keluar bagi yang salah membuka halaman ini
     links: [{ href: "app.html", text: "‹ Buka aplikasi QuParkir" }],
     note: h(".auth-notice", {}, [
-      h("span.ic", { text: "🔒" }),
-      h("p", { text: "Halaman internal tim QuParkir. Hubungi admin sistem bila lupa kredensial." }),
+      h("span.ic", { text: dariApp ? "↪️" : "🔒" }),
+      h("p", { text: dariApp
+        ? "Akun admin tidak memakai aplikasi pelanggan — Anda diarahkan ke sini. Masuk dengan akun yang sama."
+        : "Khusus akun ber-peran admin. Akun pelanggan & petugas tidak bisa masuk di sini." }),
     ]),
   }));
-  user.focus();
+  email.focus();
 }
 
-function logout() { setLoggedIn(false); location.reload(); }
+// Memutus keduanya: kunci panel per-tab DAN sesi Firebase. Kalau hanya kunci
+// panel yang dilepas, akun admin tetap "masuk" di origin ini — dan pemakai
+// berikutnya di komputer yang sama cukup memuat ulang untuk kembali masuk.
+async function logout() {
+  setLoggedIn(false);
+  try { await siap; await Auth.logout(); } catch { /* tetap muat ulang */ }
+  location.replace("admin.html");
+}
 
 // ============================================================
 // Status hak tulis (mode Firebase)
@@ -149,13 +189,20 @@ function statusStrip() {
       ]));
       return;
     }
+    // Nyaris tidak mungkin terlihat sejak gerbangnya sendiri menuntut role
+    // admin — tapi peran bisa dicabut selagi panel terbuka, dan strip inilah
+    // yang menjelaskan kenapa Simpan tiba-tiba ditolak.
+    //
+    // Tautannya TIDAK boleh ke app.html#/login lagi: app menolak akun admin
+    // dan akan memantulkannya kembali ke sini, jadi tombol itu hanya akan
+    // memutar-mutar orang. Jalan keluarnya masuk ulang di halaman ini.
     el.classList.add("warn");
     el.append(h("span.ic", { text: "⚠️" }), h("div", {}, [
       h("p", {}, [
-        h("b", { text: u ? "Akun Firebase ini bukan admin. " : "Belum masuk ke akun Firebase. " }),
+        h("b", { text: u ? "Peran akun ini bukan lagi admin. " : "Sesi Firebase terputus. " }),
         document.createTextNode("Menyimpan/menghapus data akan ditolak server, dan rekap transaksi tidak bisa dibaca."),
       ]),
-      h("a.btn.sm.ghost", { href: "app.html#/login", target: "_blank", rel: "noopener" }, "Masuk akun admin →"),
+      h("button.btn.sm.ghost", { type: "button", onclick: () => logout() }, "Masuk ulang →"),
     ]));
   };
   paint();
@@ -170,7 +217,7 @@ function statusStrip() {
 // id + label datang dari ADMIN_TABS (skeleton.js) — satu-satunya sumber, juga
 // dipakai admin-boot.js untuk menggambar kerangka tab yang benar saat refresh.
 // Fungsi render tetap di sini karena butuh DB/Auth yang tidak dimuat admin-boot.js.
-const RENDER = { ringkasan: renderRingkasan, lokasi: renderLokasi, promo: renderPromo, banner: renderBanner, qris: renderQris };
+const RENDER = { ringkasan: renderRingkasan, lokasi: renderLokasi, topup: renderTopup, promo: renderPromo, banner: renderBanner, qris: renderQris };
 const TABS = ADMIN_TABS.map(t => ({ ...t, render: RENDER[t.id] }));
 
 function boot(root) {
@@ -453,6 +500,76 @@ function renderLokasi(root) {
   return () => unsub && unsub();
 }
 
+// ---------- Tab: Top Up (persetujuan permintaan) ----------
+//
+// Salinan pekerjaan yang sama dengan #/topup di app (pages/petugas.js), bukan
+// karena rangkap: sejak app.html mengalihkan akun admin keluar, halaman itu
+// tidak lagi terjangkau admin sama sekali. Petugas memakai yang di app, admin
+// memakai yang ini. Keduanya memanggil DB.topups yang sama, jadi tidak ada
+// aturan bisnis yang diduplikasi — hanya tampilannya.
+//
+// Jam ditampilkan sampai DETIK dan usianya disebut karena satu-satunya
+// pegangan untuk mencocokkan ke aplikasi merchant adalah nominal + jam: QRIS
+// statis tidak membawa nomor order.
+const jamDetik = (ts) => new Date(ts).toLocaleString("id-ID",
+  { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+function usiaText(ts) {
+  const m = Math.max(0, Math.floor((Date.now() - ts) / 60000));
+  if (m < 1) return "baru saja";
+  if (m < 60) return m + " menit lalu";
+  const j = Math.floor(m / 60);
+  return j < 24 ? j + " jam lalu" : Math.floor(j / 24) + " hari lalu";
+}
+
+function renderTopup(root) {
+  const listEl = h("div", {}, [memuat()]);
+  root.append(h("section.section", {}, [
+    h(".head", {}, [h("h2", { text: "Konfirmasi Top Up" })]),
+    h(".adm-note", {}, [
+      h("p", {}, [
+        h("b", { text: "Sebelum menyetujui: " }),
+        document.createTextNode("buka aplikasi merchant GoPay dan pastikan uang dengan nominal yang sama benar-benar masuk. Menyetujui berarti menambah saldo pengguna — dan saldo itu bisa dipakai membayar parkir."),
+      ]),
+    ]),
+    listEl,
+  ]));
+
+  const unsub = DB.topups.subscribePending((list) => {
+    listEl.innerHTML = "";
+    if (!list.length) {
+      listEl.append(h(".empty", {}, [h(".ic", { text: "💠" }), h("p", { text: "Tidak ada permintaan top up." })]));
+      return;
+    }
+
+    // Dua permintaan pending bernominal sama tidak bisa dibedakan dari daftar
+    // mutasi merchant — satu uang masuk cocok dengan keduanya. Menyetujui yang
+    // salah berarti memberi saldo kepada yang belum membayar.
+    const jumlahNominal = list.reduce((m, t) => (m[t.amount] = (m[t.amount] || 0) + 1, m), {});
+
+    list.forEach(t => {
+      const kembar = jumlahNominal[t.amount] > 1;
+      const setuju = h("button.btn.sm", { type: "button" }, "Setujui");
+      const tolak = h("button.btn.sm.ghost", { type: "button" }, "Tolak");
+      const jalankan = async (fn, pesan) => {
+        setuju.disabled = tolak.disabled = true;   // cegah klik ganda menambah saldo dua kali
+        try { await fn(t.id, Auth.current()?.uid); toast(pesan, "ok"); }
+        catch (e) { toast(e.message || "Gagal memproses", "err"); setuju.disabled = tolak.disabled = false; }
+      };
+      setuju.onclick = () => jalankan(DB.topups.approve, "Top Up " + rupiah(t.amount) + " disetujui");
+      tolak.onclick = () => jalankan(DB.topups.reject, "Permintaan ditolak");
+
+      listEl.append(admItem("💠", [
+        h(".t", { text: rupiah(t.amount) + " · " + (t.name || t.uid.slice(0, 8)) }),
+        h(".s", { text: "QRIS · " + jamDetik(t.createdAt) + " · " + usiaText(t.createdAt) }),
+        kembar ? h(".s", { style: "color:var(--danger,#ef4444);font-weight:700",
+          text: "⚠️ Ada permintaan lain dengan nominal sama — pastikan Anda mencocokkan mutasi yang benar" }) : null,
+      ].filter(Boolean), [setuju, tolak]));
+    });
+  });
+  return () => unsub && unsub();
+}
+
 // ---------- Tab: Promo (CRUD, UI kartu dibuat otomatis dari teks) ----------
 function promoForm(existing) {
   const tag = h("input.input", { type: "text", value: existing?.tag || "", placeholder: "BARU / HEMAT / POIN" });
@@ -698,9 +815,23 @@ async function main() {
     await Promise.race([Auth.ready, new Promise(r => setTimeout(r, 5000))]);
   })();
 
-  // Gerbang sandi murni sisi klien — jangan menahannya di belakang unduhan SDK
-  // Firebase, kalau tidak layar hanya menampilkan kerangka selama beberapa detik.
-  if (isLoggedIn()) { await siap; boot(view); }
-  else renderLogin(view);
+  // Gerbang digambar lebih dulu, tidak menunggu SDK Firebase selesai diunduh —
+  // kalau tidak, layar hanya menampilkan kerangka selama beberapa detik.
+  // submit()-nya sendiri menunggu `siap` sebelum menyentuh Auth.
+  if (!isLoggedIn()) { renderLogin(view); return; }
+
+  // Kunci per-tab bilang "tab ini sudah pernah membuka panel". Itu TIDAK cukup
+  // untuk membuka lagi: perannya bisa dicabut sejak terakhir kali, atau sesi
+  // Firebase-nya berakhir/berganti akun di tab lain (sesinya dipakai bersama
+  // seluruh origin). Yang menentukan tetap role yang sedang berlaku.
+  await siap;
+  const u = Auth?.current?.();
+  if (MODE === "firebase" && u?.role !== "admin") {
+    setLoggedIn(false);
+    if (u) await Auth.logout().catch(() => {});
+    renderLogin(view);
+    return;
+  }
+  boot(view);
 }
 main();

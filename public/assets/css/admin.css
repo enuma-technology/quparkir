@@ -129,6 +129,11 @@ textarea.input{resize:vertical;font-family:inherit;min-height:84px;line-height:1
 .qrbox img,.qrbox canvas{max-width:100%;height:auto}
 
 /* ---------- strip status hak tulis ---------- */
+/* Catatan peringatan di dalam sebuah tab (mis. sebelum menyetujui top up).
+   Warnanya sama dengan .adm-status.warn supaya keduanya terbaca satu bahasa. */
+.adm-note{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);
+  border-radius:var(--r-sm);padding:12px 14px;margin-bottom:12px;
+  font-size:.82rem;line-height:1.6;color:#92400e}
 .adm-statuswrap{padding-bottom:0}
 .adm-status{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:var(--r-sm);
   font-size:.84rem;line-height:1.5;border:1px solid transparent}

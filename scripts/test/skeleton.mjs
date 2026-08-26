@@ -65,8 +65,16 @@ for (const h of HAL) {
   await page.waitForFunction(() => !document.querySelector(".skel-page"), null, { timeout: 25000 })
     .then(() => console.log("             kerangka dilepas setelah halaman siap ✅"))
     .catch(() => console.log("             ❌ kerangka TIDAK dilepas"));
-  const kosong = await page.evaluate(() => (window.__sampel || []).filter(x => x === "KOSONG").length).catch(() => -1);
-  console.log("             frame kosong:", kosong === 0 ? "0 ✅" : kosong + " ❌");
+  // KOSONG sebelum gambar PERTAMA bukan kedipan — itu jeda antara #view ada di
+  // HTML dan modul boot sempat dijalankan, dan panjangnya mengikuti beban
+  // mesin. Yang cacat adalah layar yang sudah terisi lalu berkedip jadi
+  // kosong, jadi hanya KOSONG setelah gambar pertama yang dihitung.
+  const kosong = await page.evaluate(() => {
+    const f = window.__sampel || [];
+    const mulai = f.findIndex(x => x !== "KOSONG");
+    return mulai < 0 ? 0 : f.slice(mulai).filter(x => x === "KOSONG").length;
+  }).catch(() => -1);
+  console.log("             kedip kosong setelah tergambar:", kosong === 0 ? "0 ✅" : kosong + " ❌");
 }
 
 // kerangka halaman auth: keluar dulu, lalu refresh di #/login

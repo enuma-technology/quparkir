@@ -173,11 +173,11 @@ export default async function akunPage(view) {
   const bal = petugas ? 0 : await Promise.resolve(DB.wallet.get(u.uid));
   const kartuSaldo = petugas ? null : balanceCard(u, bal);
 
-  // Satu-satunya pintu masuk ke persetujuan top up. Dibuat sekali lalu
-  // ditempatkan di kelompok yang berbeda menurut peran (lihat kelolaItems):
-  // saldo pengguna hanya bertambah lewat halaman ini, jadi orang yang berhak
-  // menyetujui harus bisa menemukannya tanpa mengetik alamat.
-  const konfirmasiTopUp = (petugas || u.role === "admin")
+  // Persetujuan top up bagi PETUGAS. Admin tidak pernah sampai ke halaman ini
+  // — akun admin dialihkan ke /admin sebelum app sempat dirender (lihat
+  // alihkanAdmin di app.js), dan persetujuan top up untuknya ada sebagai tab
+  // tersendiri di panel itu.
+  const konfirmasiTopUp = petugas
     ? item({ ic: "💠", t: "Konfirmasi Top Up", s: "Setujui setelah uang masuk di merchant", onclick: () => go("#/topup") })
     : null;
 
@@ -191,17 +191,11 @@ export default async function akunPage(view) {
     item({ ic: "🎫", t: "E-Ticket", s: "Tiket sesi parkir aktif", onclick: () => go("#/status") }),
   ];
 
-  const kelolaItems = [
-    // Admin memakai tab-bar pelanggan, jadi jalan masuk ke dashboard petugas
-    // hanya ada di sini. Petugas sudah punya tab-nya sendiri.
-    u.role === "admin" ? item({ ic: "🦺", t: "Dashboard Petugas", s: "Verifikasi kendaraan di lokasi", onclick: () => go("#/petugas") }) : null,
-    // Admin memakai menu pelanggan, jadi tanpa baris ini satu-satunya cara
-    // mencapai halaman persetujuan adalah mengetik #/topup — dan permintaan
-    // top up menggantung tanpa ada yang tahu.
-    u.role === "admin" ? konfirmasiTopUp : null,
-    // panel admin adalah halaman tersendiri (admin.html), bukan rute SPA
-    u.role === "admin" ? item({ ic: "🏛️", t: "Panel Admin", s: "Lokasi, promo, banner & QR", onclick: () => location.assign("admin.html") }) : null,
-  ].filter(Boolean);
+  // Kelompok "Kelola" dulu berisi tiga jalan masuk khusus admin (Dashboard
+  // Petugas, Konfirmasi Top Up, Panel Admin). Ketiganya dihapus: akun admin
+  // tidak pernah membuka halaman ini lagi, jadi baris-baris itu tidak mungkin
+  // tergambar — dan membiarkannya menyiratkan admin masih memakai app.
+  const kelolaItems = [];
 
   // view.append() menampilkan `null` sebagai teks — saring dulu bagian bersyaratnya
   view.append(...[

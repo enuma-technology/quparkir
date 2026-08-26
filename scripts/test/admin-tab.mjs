@@ -43,10 +43,64 @@ await page.addInitScript(() => {
   requestAnimationFrame(tik);
 });
 
+// Gerbang panel kini Firebase Auth + role admin (bukan lagi sandi statis yang
+// tertulis di admin-panel.js), jadi akunnya harus benar-benar ada di emulator
+// Auth DAN punya users/{uid}.role = "admin". Peran sengaja tidak bisa dibuat
+// dari klien — rules melarangnya — jadi ditulis lewat REST emulator, setara
+// dengan menyetelnya lewat Firebase Console.
+const FS = "http://127.0.0.1:8080/v1/projects/quparkir/databases/(default)/documents";
+const AUTH_EMU = "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=palsu";
+const EMAIL = "admin-tab@quparkir.test", SANDI = "rahasia123";
+
+await fetch("http://127.0.0.1:8080/emulator/v1/projects/quparkir/databases/(default)/documents", { method: "DELETE" });
+await fetch("http://127.0.0.1:9099/emulator/v1/projects/quparkir/accounts", { method: "DELETE" });
+
+const daftar = await fetch(AUTH_EMU, {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: EMAIL, password: SANDI, returnSecureToken: true }),
+}).then(r => r.json());
+if (!daftar.localId) throw new Error("gagal membuat akun admin uji: " + JSON.stringify(daftar).slice(0, 200));
+await fetch(`${FS}/users/${daftar.localId}`, {
+  method: "PATCH", headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+  body: JSON.stringify({ fields: { name: { stringValue: "Admin Tab" }, email: { stringValue: EMAIL }, role: { stringValue: "admin" } } }),
+});
+
+// Akun petugas — dipakai membuktikan gerbangnya menolak peran lain.
+const PETUGAS = "petugas-tab@quparkir.test";
+const ptg = await fetch(AUTH_EMU, {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: PETUGAS, password: SANDI, returnSecureToken: true }),
+}).then(r => r.json());
+await fetch(`${FS}/users/${ptg.localId}`, {
+  method: "PATCH", headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+  body: JSON.stringify({ fields: { name: { stringValue: "Petugas Tab" }, email: { stringValue: PETUGAS }, role: { stringValue: "petugas" } } }),
+});
+
 await page.goto(APP, { waitUntil: "domcontentloaded" });
 await page.waitForSelector(".auth-card", { timeout: 20000 });
-await page.fill("input[placeholder='admin']", "admin");
-await page.fill("input[placeholder='Kata sandi']", "admin234156");
+
+// --- gerbang menolak peran selain admin ---
+// Kredensialnya BENAR; yang salah perannya. Kalau panel tetap terbuka, petugas
+// bisa menyunting lokasi & promo — dan menyetujui top up-nya sendiri.
+await page.fill("input[type='email']", PETUGAS);
+await page.fill("input[placeholder='Kata sandi']", SANDI);
+await page.click("button:has-text('Masuk')");
+await t("Akun petugas dengan sandi BENAR ditolak di gerbang panel", async () => {
+  await page.waitForSelector(".fld-err, .err", { timeout: 15000 }).catch(() => {});
+  const teks = await page.textContent(".auth-card");
+  if (!/bukan admin/i.test(teks)) throw new Error("tidak ada pesan penolakan: " + teks.slice(0, 160));
+  if (await page.locator(".admin-tabs").count()) throw new Error("panel malah terbuka untuk petugas");
+});
+await t("Sesi petugas ikut diputus, tidak ditinggal hidup", async () => {
+  const masih = await page.evaluate(async () => {
+    const { Auth } = await import("./js/auth.js");
+    return !!Auth?.current?.();
+  });
+  if (masih) throw new Error("sesi Firebase masih terpasang setelah ditolak");
+});
+
+await page.fill("input[type='email']", EMAIL);
+await page.fill("input[placeholder='Kata sandi']", SANDI);
 await page.click("button:has-text('Masuk')");
 await page.waitForSelector(".admin-tabs", { timeout: 20000 });
 await page.waitForSelector(".admin-tabs button.active", { timeout: 10000 });
@@ -72,20 +126,38 @@ await t("Klik tab Lokasi → hash jadi #lokasi", async () => {
 // yang salah tab. Bukti bahwa kerangka tab-yang-benar SEMPAT tampil
 // dikumpulkan lintas semua reload lalu diperiksa satu kali di akhir.
 let pernahTampilKerangkaBenar = false;
-async function refreshDanPeriksa(label, judul, expectIndex) {
+// Posisi tab TIDAK ditulis di sini. Dulu tiap pemanggilan menyebut indeksnya
+// (Lokasi 1, Promo 2, …) dan seluruh uji ini langsung merah begitu satu tab
+// baru disisipkan — bukan karena ada yang rusak, tapi karena angkanya basi.
+// Sekarang dibaca dari tab-bar yang sedang tampil, yang urutannya berasal dari
+// ADMIN_TABS — sumber yang sama dengan kerangkanya.
+async function refreshDanPeriksa(label, judul) {
+  const expectIndex = await page.evaluate((l) =>
+    [...document.querySelectorAll(".admin-tabs button")].findIndex(b => b.textContent.includes(l)), label);
+  if (expectIndex < 0) throw new Error("tab tidak ditemukan di tab-bar: " + label);
   await page.reload({ waitUntil: "commit" });
   await page.waitForSelector("h2:has-text('" + judul + "')", { timeout: 20000 });
 
   const frames = await page.evaluate(() => window.__tabFrames || []);
-  const kosong = frames.filter(x => x === "KOSONG").length;
+
+  // KOSONG yang mendahului gambar pertama BUKAN kedipan — itu jeda antara HTML
+  // selesai diurai (#view sudah ada, masih kosong) dan admin-boot.js sempat
+  // dijalankan. Panjangnya mengikuti beban mesin, jadi menghitungnya membuat
+  // uji ini merah-hijau acak: pada mesin yang sama, tanpa satu pun perubahan
+  // kode, angkanya berayun 1–5 antar-jalankan.
+  //
+  // Yang benar-benar cacat adalah KOSONG SETELAH sesuatu sempat tergambar —
+  // layar yang sudah terisi lalu berkedip jadi putih. Itulah yang dihitung.
+  const mulai = frames.findIndex(x => x !== "KOSONG");
+  const kosong = mulai < 0 ? 0 : frames.slice(mulai).filter(x => x === "KOSONG").length;
   const munculSkelSalah = frames.some(x => typeof x === "string" && x.startsWith("skel:") && x !== "skel:" + expectIndex);
   if (frames.includes("skel:" + expectIndex)) pernahTampilKerangkaBenar = true;
 
   await t(`Refresh di tab ${label} → kerangka TIDAK PERNAH menandai tab lain sebagai aktif`, async () => {
     if (munculSkelSalah) throw new Error("kerangka sempat menandai tab LAIN aktif: " + [...new Set(frames.filter(x => x?.startsWith?.("skel:")))].join(","));
   });
-  await t(`Refresh di tab ${label} → 0 frame layar kosong (dari ${frames.length} sampel)`, async () => {
-    if (kosong !== 0) throw new Error(kosong + " frame kosong dari " + frames.length);
+  await t(`Refresh di tab ${label} → tidak berkedip kosong setelah tergambar (dari ${frames.length} sampel)`, async () => {
+    if (kosong !== 0) throw new Error(kosong + " frame kosong SETELAH tergambar, dari " + frames.length);
   });
   await t(`Refresh di tab ${label} → konten akhir tetap di tab ${label}`, async () => {
     const h = await page.evaluate(() => location.hash);
@@ -94,20 +166,24 @@ async function refreshDanPeriksa(label, judul, expectIndex) {
   });
 }
 
-await refreshDanPeriksa("Lokasi", "Lokasi Parkir", 1);
+await refreshDanPeriksa("Lokasi", "Lokasi Parkir");
 await page.screenshot({ path: SHOT + "/admin-refresh-lokasi-final.png" });
+
+await page.click(".admin-tabs button:has-text('Top Up')");
+await page.waitForSelector("h2:has-text('Konfirmasi Top Up')", { timeout: 10000 });
+await refreshDanPeriksa("Top Up", "Konfirmasi Top Up");
 
 await page.click(".admin-tabs button:has-text('Promo')");
 await page.waitForSelector("h2:has-text('Promo Beranda')", { timeout: 10000 });
-await refreshDanPeriksa("Promo", "Promo Beranda", 2);
+await refreshDanPeriksa("Promo", "Promo Beranda");
 
 await page.click(".admin-tabs button:has-text('Banner')");
 await page.waitForSelector("h2:has-text('Banner Beranda')", { timeout: 10000 });
-await refreshDanPeriksa("Banner", "Banner Beranda", 3);
+await refreshDanPeriksa("Banner", "Banner Beranda");
 
 await page.click(".admin-tabs button:has-text('Export QRIS')");
 await page.waitForSelector("h2:has-text('QR Check-in per Lokasi')", { timeout: 10000 });
-await refreshDanPeriksa("Export QRIS", "QR Check-in per Lokasi", 4);
+await refreshDanPeriksa("Export QRIS", "QR Check-in per Lokasi");
 await page.screenshot({ path: SHOT + "/admin-refresh-qris-final.png" });
 
 // --- hash tak dikenal → jatuh ke Ringkasan tanpa error ---
@@ -144,6 +220,49 @@ await t("location.hash= dari luar (tanpa reload) memindah tab lewat listener has
 
 await t("Sepanjang semua reload, kerangka tab-yang-benar SEMPAT tersampel setidaknya sekali (bukti mekanisme benar-benar aktif, bukan cuma final state)", async () => {
   if (!pernahTampilKerangkaBenar) throw new Error("tidak pernah tertangkap sama sekali di semua percobaan reload");
+});
+
+// --- persetujuan top up dikerjakan DARI PANEL ---
+// Sejak akun admin dialihkan keluar dari app pelanggan, #/topup di app tidak
+// lagi terjangkau olehnya. Tanpa tab ini, admin tidak punya cara apa pun untuk
+// menyetujui top up — dan permintaan orang menggantung selamanya.
+const PEL = "pel-tab@quparkir.test";
+const pel = await fetch(AUTH_EMU, {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: PEL, password: SANDI, returnSecureToken: true }),
+}).then(r => r.json());
+const OWNER = { Authorization: "Bearer owner", "Content-Type": "application/json" };
+await fetch(`${FS}/users/${pel.localId}`, { method: "PATCH", headers: OWNER,
+  body: JSON.stringify({ fields: { name: { stringValue: "Pelanggan Tab" }, email: { stringValue: PEL } } }) });
+await fetch(`${FS}/topups?documentId=tu-uji`, { method: "POST", headers: OWNER,
+  body: JSON.stringify({ fields: {
+    uid: { stringValue: pel.localId }, name: { stringValue: "Pelanggan Tab" },
+    amount: { integerValue: "50000" }, method: { stringValue: "qris" },
+    status: { stringValue: "pending" }, createdAt: { integerValue: String(Date.now()) },
+  } }) });
+
+await t("Admin melihat permintaan top up di tab panel", async () => {
+  await page.click(".admin-tabs button:has-text('Top Up')");
+  await page.waitForSelector(".adm-item:has-text('Pelanggan Tab')", { timeout: 20000 });
+});
+
+await t("Admin menyetujui dari panel → saldo pelanggan bertambah", async () => {
+  await page.click(".adm-item:has-text('Pelanggan Tab') button:has-text('Setujui')");
+  const t0 = Date.now();
+  for (;;) {
+    const d = await fetch(`${FS}/users/${pel.localId}`, { headers: OWNER }).then(r => r.json());
+    const w = Number(d.fields?.wallet?.integerValue ?? 0);
+    if (w === 50000) return;
+    if (Date.now() - t0 > 15000) throw new Error("saldo = " + w + ", harusnya 50000");
+    await new Promise(r => setTimeout(r, 400));
+  }
+});
+
+await t("Permintaan ditandai approved oleh admin", async () => {
+  const d = await fetch(`${FS}/topups/tu-uji`, { headers: OWNER }).then(r => r.json());
+  const st = d.fields?.status?.stringValue;
+  if (st !== "approved") throw new Error("status = " + st);
+  if (d.fields?.handledBy?.stringValue !== daftar.localId) throw new Error("handledBy = " + d.fields?.handledBy?.stringValue);
 });
 
 console.log("\nerror konsol:", errors.length ? errors.join(" | ") : "(tidak ada)");
