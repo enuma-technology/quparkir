@@ -17,6 +17,13 @@
 // Env var yang diberikan hanya untuk satu perintah tidak masuk riwayat kalau
 // barisnya diawali spasi, dan tidak muncul di daftar proses milik orang lain.
 //
+// SEJAK 26 AGU 2026 skrip ini BUKAN LAGI satu-satunya jalan untuk petugas:
+// panel /admin punya tab "Petugas" yang membuat, mengubah, menonaktifkan, dan
+// menghapus akun petugas lewat netlify/functions/kelola-petugas.js (Admin SDK
+// yang sama, hanya jalannya di server). Skrip ini tetap dipakai untuk hal yang
+// sengaja TIDAK dibuka di panel: membuat/memulihkan akun ADMIN, dan bootstrap
+// saat panel belum bisa dibuka sama sekali.
+//
 // Pemakaian:
 //    QP_SANDI='...' node scripts/admin/buat-akun.mjs admin@quparkir.com admin --nama "Admin QuParkir"
 //    QP_SANDI='...' node scripts/admin/buat-akun.mjs petugas2@quparkir.com petugas

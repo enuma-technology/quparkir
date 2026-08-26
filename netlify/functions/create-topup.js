@@ -4,7 +4,7 @@
 // Membuat order Snap untuk TOP UP saldo QuPay. Saldo bertambah bukan di sini,
 // melainkan di midtrans-webhook setelah Midtrans memastikan uangnya masuk —
 // itu bedanya dengan jalur lama, di mana pengguna menekan "saya sudah bayar"
-// lalu petugas harus mencocokkan sendiri.
+// lalu admin harus mencocokkan sendiri di panel /admin.
 //
 // Nominal di sini MEMANG datang dari klien (tidak seperti tarif parkir yang
 // diturunkan dari checkinAt) — pengguna bebas memilih mau mengisi berapa. Yang

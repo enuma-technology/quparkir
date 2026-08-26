@@ -67,14 +67,16 @@ service cloud.firestore {
             || (request.resource.data.wallet is number
                 && request.resource.data.wallet >= 0
                 && request.resource.data.wallet <= resource.data.get('wallet', 0)));
-      // Petugas: HANYA menambah saldo (menyetujui top up), tanpa menyentuh
-      // field lain milik pengguna. Petugas TIDAK diberi izin baca dokumen ini
-      // — profil pelanggan tetap tertutup — jadi DB.topups.approve memakai
+      // Admin: HANYA menambah saldo (menyetujui top up), tanpa menyentuh field
+      // lain milik pengguna. Admin TIDAK diberi izin baca dokumen ini —
+      // profil pelanggan tetap tertutup — jadi DB.topups.approve memakai
       // increment(), bukan baca-lalu-tulis.
+      // PETUGAS TIDAK ADA DI SINI. Menyetujui top up = memberi uang, dan itu
+      // hak admin saja; petugas di lapangan hanya memverifikasi kendaraan.
       // Default 0, sama dengan klausa pemilik di atas: increment() atas
       // dokumen yang belum punya field 'wallet' menghasilkan angka = nominal
-      // top up. Klausa ini hanya mencegah petugas MENGURANGI saldo.
-      allow update: if isPetugas()
+      // top up. Klausa ini hanya mencegah admin MENGURANGI saldo.
+      allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['wallet'])
         && request.resource.data.wallet is number
         && request.resource.data.wallet >= resource.data.get('wallet', 0);
@@ -156,9 +158,13 @@ service cloud.firestore {
     }
 
     // Permintaan top up QuPay. Pengguna membayar lewat QRIS merchant, lalu
-    // mencatat permintaannya di sini; petugas mencocokkan ke aplikasi merchant
+    // mencatat permintaannya di sini; ADMIN mencocokkan ke aplikasi merchant
     // dan menyetujui. Saldo baru bertambah pada langkah persetujuan itu —
     // pengguna tidak pernah bisa menambah saldonya sendiri.
+    //
+    // Petugas boleh MEMBACA (halaman #/topup di app hanya memantau antrean,
+    // supaya petugas bisa menjawab pengguna yang bertanya di lapangan), tapi
+    // tidak boleh menulis: persetujuan hanya lewat panel admin.
     match /topups/{id} {
       allow read: if isSignedIn() && (resource.data.uid == uid() || isPetugas());
       allow create: if isSignedIn() && request.resource.data.uid == uid()
@@ -167,7 +173,7 @@ service cloud.firestore {
         && request.resource.data.amount <= 1000000
         && request.resource.data.status == 'pending'
         && request.resource.data.method == 'qris';
-      allow update: if isPetugas()
+      allow update: if isAdmin()
         && resource.data.status == 'pending'
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['status', 'handledBy', 'handledAt'])

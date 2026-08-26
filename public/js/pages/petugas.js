@@ -86,20 +86,27 @@ export default async function petugasPage(view) {
 
 
 // ============================================================
-// Halaman tersendiri: konfirmasi top up.
+// Halaman tersendiri: antrean top up — HANYA PANTAUAN.
 //
-// Dipisah dari dashboard karena dua pekerjaan ini berbeda tempo dan berbeda
-// tempat. Verifikasi kendaraan dilakukan sambil berdiri di depan mobil;
-// konfirmasi top up dilakukan sambil membuka aplikasi merchant. Menumpuknya
-// dalam satu layar panjang membuat permintaan top up baru tenggelam di bawah
-// daftar kendaraan yang bisa puluhan baris.
+// Menyetujui top up berarti menambah saldo, dan saldo itu uang: pekerjaan itu
+// milik admin, di panel /admin. Petugas lapangan tidak memegangnya — dulu ia
+// bisa, dan itu berarti setiap ponsel petugas adalah tombol cetak saldo yang
+// berjalan-jalan di parkiran.
+//
+// Halamannya tidak dihapus karena petugaslah yang berdiri di depan pengguna
+// saat pengguna bertanya "top up saya kok belum masuk?". Di sini ia bisa
+// melihat permintaannya memang tercatat dan sedang menunggu admin — tanpa
+// bisa menyentuhnya. Pagar sesungguhnya ada di firestore.rules (/topups
+// hanya boleh di-update isAdmin(), users.wallet hanya boleh dinaikkan admin);
+// layar ini sekadar tidak menawarkan tombol yang pasti ditolak server.
 // ============================================================
-// Jam:menit:detik + tanggal singkat, untuk dicocokkan ke daftar mutasi merchant.
+// Jam:menit:detik + tanggal singkat — sama dengan yang dibaca admin, supaya
+// petugas dan admin menyebut permintaan yang sama dengan patokan yang sama.
 const jamDetik = (ts) => new Date(ts).toLocaleString("id-ID",
   { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-// "3 menit lalu" — permintaan yang baru masuk biasanya mutasinya juga baru,
-// dan yang sudah menua patut dicurigai (orang menekan "sudah bayar" tanpa bayar).
+// "3 menit lalu" — yang menua patut disebutkan ke admin, karena di ujung sana
+// ada orang yang uangnya sudah keluar tapi saldonya belum bertambah.
 function usia(ts) {
   const m = Math.max(0, Math.floor((Date.now() - ts) / 60000));
   if (m < 1) return "baru saja";
@@ -109,16 +116,16 @@ function usia(ts) {
 }
 
 export async function topupPetugasPage(view) {
-  const u = Auth.current();
   const listEl = h("div.pad");
 
   view.append(
-    appHeader({ title: "Konfirmasi Top Up", sub: "Cocokkan dengan aplikasi merchant", icons: false }),
+    appHeader({ title: "Antrean Top Up", sub: "Pantauan — disetujui oleh admin", icons: false }),
     h("div.pad", { style: "padding-bottom:0" }, [
-      h(".card.pad", { style: "background:rgba(245,158,11,.10)" }, [
+      h(".card.pad", { style: "background:rgba(59,130,246,.10)" }, [
         h("p", { style: "font-size:.82rem;line-height:1.6", html:
-          "<b>Sebelum menyetujui:</b> buka aplikasi merchant GoPay dan pastikan uang dengan nominal yang sama benar-benar masuk. " +
-          "Menyetujui berarti menambah saldo pengguna — dan saldo itu bisa dipakai membayar parkir." }),
+          "<b>Hanya admin yang menyetujui top up.</b> Halaman ini menampilkan permintaan yang sedang " +
+          "menunggu supaya Anda bisa memastikan permintaan pengguna sudah tercatat. Bila sudah lama " +
+          "menunggu, teruskan ke admin — pencocokan mutasi merchant dilakukan di panel admin." }),
       ]),
     ]),
     listEl,
@@ -127,42 +134,20 @@ export async function topupPetugasPage(view) {
   const unsub = DB.topups.subscribePending((list) => {
     listEl.innerHTML = "";
     if (!list.length) {
-      listEl.append(h(".empty", {}, [h(".ic", { text: "💠" }), h("p", { text: "Tidak ada permintaan top up." })]));
+      listEl.append(h(".empty", {}, [h(".ic", { text: "💠" }), h("p", { text: "Tidak ada permintaan top up yang menunggu." })]));
       return;
     }
 
-    // Satu-satunya pegangan untuk mencocokkan ke aplikasi merchant adalah
-    // NOMINAL + JAM — QRIS statis tidak membawa nomor order. Karena itu dua
-    // permintaan dengan nominal sama yang menunggu bersamaan TIDAK bisa
-    // dibedakan dari daftar mutasi: satu uang masuk Rp 50.000 cocok dengan
-    // keduanya, dan menyetujui yang salah berarti memberi saldo gratis kepada
-    // yang belum membayar. Kasus itu ditandai, bukan didiamkan.
-    const jumlahNominal = list.reduce((m, t) => (m[t.amount] = (m[t.amount] || 0) + 1, m), {});
-
-    list.forEach(t => {
-      const kembar = jumlahNominal[t.amount] > 1;
-      const setuju = h("button.btn.sm", {}, "Setujui");
-      const tolak = h("button.btn.sm.ghost", { style: "margin-left:6px" }, "Tolak");
-      const jalankan = async (fn, pesan) => {
-        setuju.disabled = tolak.disabled = true;   // cegah klik ganda menambah saldo dua kali
-        try { await fn(t.id, u.uid); toast(pesan, "ok"); }
-        catch (e) { toast(e.message || "Gagal memproses", "err"); setuju.disabled = tolak.disabled = false; }
-      };
-      setuju.onclick = () => jalankan(DB.topups.approve, "Top Up " + rupiah(t.amount) + " disetujui");
-      tolak.onclick = () => jalankan(DB.topups.reject, "Permintaan ditolak");
-      listEl.append(h(".li", {}, [
-        h(".ic", { style: "background:rgba(59,130,246,.18)", text: "💠" }),
-        h("div", { style: "flex:1;min-width:0" }, [
-          h(".t", { text: rupiah(t.amount) + " · " + (t.name || t.uid.slice(0, 8)) }),
-          // Detik ikut ditampilkan: daftar mutasi GoPay merchant memakai jam
-          // menit-detik, dan dua permintaan bisa berjarak kurang dari semenit.
-          h(".s", { text: "QRIS · " + jamDetik(t.createdAt) + " · " + usia(t.createdAt) }),
-          kembar ? h(".s", { style: "color:var(--danger,#ef4444);font-weight:700",
-            text: "⚠️ Ada permintaan lain dengan nominal sama — pastikan Anda mencocokkan mutasi yang benar" }) : null,
-        ].filter(Boolean)),
-        h("div", { style: "display:flex;align-items:center" }, [setuju, tolak]),
-      ]));
-    });
+    list.forEach(t => listEl.append(h(".li", {}, [
+      h(".ic", { style: "background:rgba(59,130,246,.18)", text: "💠" }),
+      h("div", { style: "flex:1;min-width:0" }, [
+        h(".t", { text: rupiah(t.amount) + " · " + (t.name || t.uid.slice(0, 8)) }),
+        h(".s", { text: "QRIS · " + jamDetik(t.createdAt) + " · " + usia(t.createdAt) }),
+      ]),
+      // .warn, bukan pill polos: "menunggu" adalah keadaan yang harus terbaca
+      // sekilas — dan nowrap supaya labelnya tidak pecah dua baris di ponsel.
+      h("span.pill.warn", { style: "flex:0 0 auto;white-space:nowrap;font-size:.78rem", text: "Menunggu admin" }),
+    ])));
   });
 
   return () => { unsub && unsub(); };

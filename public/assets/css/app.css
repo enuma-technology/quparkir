@@ -580,8 +580,37 @@ label.field span{display:block;font-size:.8rem;font-weight:700;margin-bottom:6px
 .acc-item.danger .t{color:var(--danger)}
 .acc-foot{margin:6px 0 4px;text-align:center;font-size:.78rem;color:var(--text-soft)}
 
-.topup-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
-.topup-chips button{flex:1 0 auto;min-width:96px;cursor:pointer;font:inherit;font-weight:800;font-size:.84rem;padding:10px;
+/* --- top up: nominal diketik lewat papan angka --- */
+.topup-lbl{font-size:.8rem;font-weight:700;color:var(--muted);margin:2px 0 2px}
+.topup-amt{font-size:2rem;font-weight:900;letter-spacing:-.02em;color:var(--blue-700);
+  font-variant-numeric:tabular-nums;margin-bottom:14px;min-height:2.4rem;line-height:1.2}
+.topup-amt.nol{color:var(--muted);opacity:.55}
+.topup-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:2px 0 14px}
+/* Layar pendek (ponsel kecil, atau ponsel mana pun dalam mode lanskap):
+   modal dibatasi 90dvh lalu di-scroll, jadi tanpa ini papan angka mendorong
+   "Lanjut Bayar" ke bawah lipatan — tombol utamanya justru yang hilang. */
+@media (max-height:720px){
+  .topup-amt{font-size:1.6rem;margin-bottom:10px;min-height:2rem}
+  .topup-pad{gap:6px;margin-bottom:10px}
+  .topup-key{padding:9px 0;font-size:1.02rem}
+  .topup-chips{gap:6px;margin-bottom:10px}
+  .topup-chips button{padding:8px;font-size:.8rem}
+}
+.topup-key{cursor:pointer;font:inherit;font-weight:800;font-size:1.15rem;padding:13px 0;
+  border:1px solid var(--line);border-radius:12px;background:var(--tile);color:var(--blue-800);
+  transition:.12s;font-variant-numeric:tabular-nums}
+.topup-key.sub{font-size:.95rem;color:var(--blue-700)}
+.topup-key:hover{background:var(--blue-200)}
+.topup-key:active{transform:scale(.96)}
+.topup-key:focus-visible{outline:2px solid var(--blue-400);outline-offset:2px}
+.topup-hint{margin-top:10px;text-align:center;font-size:.76rem;color:var(--muted)}
+.topup-hint.err{color:var(--danger,#ef4444);font-weight:700}
+@media (prefers-reduced-motion:reduce){.topup-key{transition:none}.topup-key:active{transform:none}}
+
+/* Grid 2 kolom, bukan flex-wrap: dengan empat nominal, flex membungkusnya
+   jadi 3 + 1 dan chip terakhir melebar sendirian selebar kartu. */
+.topup-chips{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px}
+.topup-chips button{cursor:pointer;font:inherit;font-weight:800;font-size:.84rem;padding:10px;
   border:1px solid var(--line);border-radius:12px;background:var(--tile);color:var(--blue-700);transition:.16s}
 .topup-chips button.active{border-color:transparent;color:#fff;background:linear-gradient(135deg,var(--blue-600),var(--cyan-500))}
 .acc-item:focus-visible,.topup-chips button:focus-visible{outline:2px solid var(--blue-400);outline-offset:2px}

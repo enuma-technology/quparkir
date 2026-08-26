@@ -8,6 +8,7 @@
     "test:e2e": "node e2e.mjs",
     "test:skeleton": "node skeleton.mjs",
     "test:admin-tab": "node admin-tab.mjs",
+    "test:petugas-ui": "node petugas-ui.mjs",
     "postinstall": "playwright install chromium"
   },
   "devDependencies": {

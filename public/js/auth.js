@@ -42,6 +42,10 @@ function demoAuth() {
     },
     async loginAnon() { set(mk({ uid: "anon-" + randId(), name: "Tamu", provider: "anonymous", anon: true })); },
     async logout() { set(null); },
+    // Mode demo tidak punya server yang bisa dipanggil sama sekali — pemanggil
+    // (mis. tab Petugas di panel) memeriksa MODE lebih dulu; ini jaring
+    // terakhir supaya kegagalannya jelas, bukan "HTTP 401".
+    async idToken() { throw new Error("Mode demo tidak memakai server."); },
     setRole(role) {
       if (!user) return;
       set({ ...user, role });
@@ -164,6 +168,16 @@ async function firebaseAuth() {
     },
     async loginAnon() { try { await signInAnonymously(auth); } catch (err) { throw friendly(err); } },
     logout: () => signOut(auth),
+    // Token untuk memanggil Netlify Functions. Mereka memverifikasinya sendiri
+    // (uidDariToken di _lib.js) dan membaca perannya dari Firestore, jadi ini
+    // satu-satunya identitas yang perlu dikirim — jangan pernah menambahkan
+    // uid/role ke muatan permintaan, karena itu datang dari browser.
+    // getIdToken() menyegarkan sendiri token yang tinggal < 5 menit.
+    async idToken() {
+      const u = auth.currentUser;
+      if (!u) throw new Error("Sesi berakhir — masuk ulang.");
+      return u.getIdToken();
+    },
     setRole() { console.warn("setRole diabaikan: role diatur admin via Firestore (users/{uid}.role)."); },
   };
 }

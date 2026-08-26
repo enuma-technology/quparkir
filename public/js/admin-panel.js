@@ -8,7 +8,7 @@
 // non-admin tidak bisa lewat sini.
 // ============================================================
 import { h, $, rupiah, toast, modal, showVersion } from "./util.js";
-import { authShell, field, setError, clearError, busy, markAuthView } from "./parts.js";
+import { authShell, field, setError, clearError, busy, markAuthView, admItem, confirmDialog } from "./parts.js";
 import { initData, DB, MODE } from "./data.js";
 import { initAuth, Auth, tungguSesi } from "./auth.js";
 import { renderQR } from "./qr.js";
@@ -16,6 +16,7 @@ import { toDynamic, validateQris } from "./qris.js";
 import { adminPartNode, ADMIN_TABS } from "./skeleton.js";
 import { SESSION_KEY, currentTab } from "./admin-boot.js";
 import { resolveLocationInput } from "./geo-input.js";
+import renderPetugas from "./admin-petugas.js";
 
 // Gerbangnya adalah Firebase Auth + `users/{uid}.role == "admin"` — akun yang
 // sama yang dipakai Firestore Rules untuk memutuskan boleh-tidaknya menulis.
@@ -45,25 +46,9 @@ const setLoggedIn = (v) => { try { v ? sessionStorage.setItem(SESSION_KEY, "1") 
 // letak tidak melompat. `jenis`: "list" | "qr" | "stats".
 const memuat = (jenis = "list", n = 3) => adminPartNode(jenis, n);
 
-// Baris daftar admin: isi di kiri, tombol aksi di kanan. Di layar sempit
-// blok aksi turun jadi baris sendiri selebar kartu (lihat .adm-item di
-// admin.css) supaya tombol tetap cukup besar untuk disentuh.
-const admItem = (icon, body, actions = [], badge = null) =>
-  h(".adm-item", {}, [
-    h(".adm-main", {}, [h(".ic", { text: icon }), h(".adm-body", {}, body)]),
-    h(".adm-act", {}, [badge, ...actions]),
-  ]);
-
-// ---------- konfirmasi hapus (pakai modal() bawaan + hook _close-nya) ----------
-function confirmDialog(title, msg, { okText = "Hapus", danger = true } = {}) {
-  return modal(title, h("div", {}, [
-    h("p.s", { text: msg }),
-    h("div", { style: "display:flex;gap:10px;margin-top:14px" }, [
-      h("button.btn.ghost", { type: "button", style: "flex:1", onclick: (e) => e.target.closest(".modal")._close(false) }, "Batal"),
-      h("button.btn" + (danger ? ".danger" : ""), { type: "button", style: "flex:1", onclick: (e) => e.target.closest(".modal")._close(true) }, okText),
-    ]),
-  ]));
-}
+// admItem (baris daftar) & confirmDialog (konfirmasi aksi merusak) tinggal di
+// parts.js — dipakai bersama tab Petugas, dan modul panel tidak boleh saling
+// mengimpor.
 
 // ============================================================
 // Gerbang login
@@ -217,7 +202,8 @@ function statusStrip() {
 // id + label datang dari ADMIN_TABS (skeleton.js) — satu-satunya sumber, juga
 // dipakai admin-boot.js untuk menggambar kerangka tab yang benar saat refresh.
 // Fungsi render tetap di sini karena butuh DB/Auth yang tidak dimuat admin-boot.js.
-const RENDER = { ringkasan: renderRingkasan, lokasi: renderLokasi, topup: renderTopup, promo: renderPromo, banner: renderBanner, qris: renderQris };
+const RENDER = { ringkasan: renderRingkasan, lokasi: renderLokasi, petugas: renderPetugas, topup: renderTopup,
+  promo: renderPromo, banner: renderBanner, qris: renderQris };
 const TABS = ADMIN_TABS.map(t => ({ ...t, render: RENDER[t.id] }));
 
 function boot(root) {
@@ -502,11 +488,11 @@ function renderLokasi(root) {
 
 // ---------- Tab: Top Up (persetujuan permintaan) ----------
 //
-// Salinan pekerjaan yang sama dengan #/topup di app (pages/petugas.js), bukan
-// karena rangkap: sejak app.html mengalihkan akun admin keluar, halaman itu
-// tidak lagi terjangkau admin sama sekali. Petugas memakai yang di app, admin
-// memakai yang ini. Keduanya memanggil DB.topups yang sama, jadi tidak ada
-// aturan bisnis yang diduplikasi — hanya tampilannya.
+// SATU-SATUNYA tempat top up disetujui. #/topup di app (pages/petugas.js)
+// hanya menampilkan antrean tanpa tombol: menyetujui berarti menambah saldo,
+// dan itu hak admin. Pagarnya bukan di tampilan melainkan di firestore.rules
+// — /topups hanya boleh di-update isAdmin(), dan users.wallet hanya boleh
+// dinaikkan admin — jadi tombol di ponsel petugas pun akan ditolak server.
 //
 // Jam ditampilkan sampai DETIK dan usianya disebut karena satu-satunya
 // pegangan untuk mencocokkan ke aplikasi merchant adalah nominal + jam: QRIS

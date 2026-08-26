@@ -3,6 +3,9 @@
 import { chromium } from "playwright";
 
 const APP = "http://127.0.0.1:5000/app?emu=1";
+// Panel admin berdiri sendiri: sejak persetujuan top up jadi hak admin saja,
+// e2e harus benar-benar membukanya, bukan menirunya dari app.
+const ADMIN = "http://127.0.0.1:5000/admin?emu=1";
 const FS = "http://127.0.0.1:8080/v1/projects/quparkir/databases/(default)/documents";
 const OWNER = { Authorization: "Bearer owner", "Content-Type": "application/json" };
 const SHOT = process.env.QP_SHOTS || "./.test-shots";
@@ -308,7 +311,35 @@ try {
   await page.evaluate(() => (location.hash = "#/akun"));
   await page.waitForSelector("button:has-text('Top Up')", { timeout: 10000 });
   await page.click("button:has-text('Top Up')");
-  await page.click(".modal button.btn:has-text('Lanjut Bayar'), .modal button.btn:has-text('Top Up')");
+  await page.waitForSelector(".modal .topup-pad", { timeout: 15000 });
+
+  // Modal dibuka pada NOL, dan "Lanjut Bayar" mati sampai nominalnya sah.
+  // Dulu kolomnya terisi 50000 sejak awal — satu klik dan QR Rp 50.000 sudah
+  // terbuka tanpa nominalnya pernah dipilih siapa pun.
+  const lanjut = page.locator(".modal button.btn:has-text('Lanjut Bayar')");
+  if ((await page.textContent(".modal .topup-amt")).replace(/\D/g, "") !== "0")
+    throw new Error("nominal awal bukan nol: " + await page.textContent(".modal .topup-amt"));
+  if (await lanjut.isEnabled()) throw new Error("'Lanjut Bayar' hidup padahal nominal masih nol");
+  ok("Modal top up mulai dari Rp 0, tombol lanjut mati");
+
+  // Di bawah minimal juga harus tetap mati — dan alasannya disebut, bukan
+  // ditahan sampai tombolnya ditekan.
+  for (const d of ["3", "0", "0", "0"]) await page.click(`.modal .topup-key[aria-label="${d}"]`);
+  if (await lanjut.isEnabled()) throw new Error("Rp 3.000 diterima padahal di bawah minimal");
+  if (!/Kurang dari minimal/i.test(await page.textContent(".modal .topup-hint")))
+    throw new Error("tidak ada peringatan minimal: " + await page.textContent(".modal .topup-hint"));
+  ok("Nominal di bawah minimal ditolak sambil menyebut alasannya");
+
+  // Papan angka: hapus semuanya lalu ketik 50000 digit demi digit.
+  for (let i = 0; i < 4; i++) await page.click('.modal .topup-key[aria-label="Hapus satu angka"]');
+  await page.click('.modal .topup-key[aria-label="5"]');
+  await page.click('.modal .topup-key[aria-label="0"]');
+  await page.click('.modal .topup-key[aria-label="tiga nol"]');
+  if ((await page.textContent(".modal .topup-amt")).replace(/\D/g, "") !== "50000")
+    throw new Error("papan angka salah hitung: " + await page.textContent(".modal .topup-amt"));
+  ok("Papan angka menyusun nominal Rp 50.000 (5 · 0 · 000)");
+
+  await lanjut.click();
 
   // QR yang tampil harus QRIS merchant SUNGGUHAN. Kalau simulator sempat
   // muncul di jalur top up, saldo bisa lahir dari QR palsu — justru itu yang
@@ -350,20 +381,59 @@ try {
   ok("Kartu saldo menandai permintaan yang menunggu konfirmasi");
   await page.screenshot({ path: SHOT + "/8-topup-menunggu.png" });
 
-  // Admin menyetujui dari halaman Konfirmasi Top Up.
+  // ---------- Fase PETUGAS: MELIHAT antrean, tapi TIDAK bisa menyetujui ----------
+  // Menyetujui top up berarti menambah saldo, dan saldo itu uang. Petugas
+  // lapangan hanya memantau supaya bisa menjawab pengguna yang bertanya;
+  // yang menyetujui hanya admin, di panel /admin.
   await keluar();
   await masuk("petugas@quparkir.test");
   // Lewat MENU, bukan dengan mengetik hash — kalau barisnya hilang, permintaan
   // top up menggantung tanpa ada yang tahu.
   await page.evaluate(() => (location.hash = "#/akun"));
-  const menuTopUp = page.locator(".acc-item:has-text('Konfirmasi Top Up')");
+  const menuTopUp = page.locator(".acc-item:has-text('Antrean Top Up')");
   await menuTopUp.waitFor({ timeout: 15000 });
-  await page.waitForSelector(".acc-item.acc-antre:has-text('permintaan menunggu persetujuan')", { timeout: 15000 });
-  ok("Menu petugas menandai ada permintaan top up menunggu");
+  await page.waitForSelector(".acc-item.acc-antre:has-text('permintaan menunggu admin')", { timeout: 15000 });
+  ok("Menu petugas menandai ada permintaan top up menunggu admin");
   await menuTopUp.click();
-  await page.waitForSelector("text=Konfirmasi Top Up", { timeout: 15000 });
+  await page.waitForSelector("text=Antrean Top Up", { timeout: 15000 });
   await page.waitForSelector(`.li .t:has-text('${minta.amount.toLocaleString("id-ID")}')`, { timeout: 20000 });
   ok("Petugas melihat permintaan top up yang menunggu");
+  await page.screenshot({ path: SHOT + "/9-topup-petugas.png" });
+
+  if (await page.locator(".li button:has-text('Setujui'), .li button:has-text('Tolak')").count())
+    throw new Error("tombol persetujuan masih tergambar di halaman petugas");
+  await page.waitForSelector(".li .pill:has-text('Menunggu admin')", { timeout: 10000 });
+  ok("Halaman petugas tidak menawarkan tombol Setujui/Tolak");
+
+  // Tombol yang hilang BUKAN pagar: console peramban melewatinya dalam satu
+  // baris. Yang benar-benar menutup pintu adalah rules — dibuktikan dengan
+  // memanggil DB.topups.approve persis seperti panel admin memanggilnya.
+  const tuId = (await listDocs("topups")).find(d => flat(d).uid === uid).name.split("/").pop();
+  const lewatConsole = await page.evaluate(async (id) => {
+    const { DB } = await import("./js/data.js");
+    try { await DB.topups.approve(id, "petugas-nakal"); return "BERHASIL"; }
+    catch (e) { return "ditolak: " + (e.code || e.message || ""); }
+  }, tuId);
+  if (lewatConsole === "BERHASIL") throw new Error("petugas menyetujui top up lewat console — rules bocor");
+  ok("Petugas menyetujui lewat console → ditolak rules", lewatConsole.slice(0, 60));
+
+  const saldoUsahaPetugas = flat(await api(`/users/${uid}`)).wallet ?? 0;
+  if (saldoUsahaPetugas !== saldoAwal)
+    throw new Error(`saldo berubah oleh petugas: ${saldoAwal} → ${saldoUsahaPetugas}`);
+  ok("Saldo pengguna tidak bergerak sedikit pun oleh petugas", "tetap Rp " + saldoAwal);
+
+  // ---------- Fase ADMIN: satu-satunya yang menyetujui, lewat panel /admin ----------
+  await keluar();
+  await page.goto(ADMIN, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".auth-card", { timeout: 20000 });
+  await page.fill("input[type='email']", "admin@quparkir.test");
+  await page.fill("input[placeholder='Kata sandi']", "rahasia123");
+  await page.click("button:has-text('Masuk')");
+  await page.waitForSelector(".admin-tabs", { timeout: 20000 });
+  await page.click(".admin-tabs button:has-text('Top Up')");
+  await page.waitForSelector("h2:has-text('Konfirmasi Top Up')", { timeout: 15000 });
+  await page.waitForSelector(`.adm-item:has-text('${minta.amount.toLocaleString("id-ID")}')`, { timeout: 20000 });
+  ok("Admin melihat permintaan yang sama di panel /admin");
   await page.screenshot({ path: SHOT + "/9-topup-admin.png" });
   await page.click("button:has-text('Setujui')");
 
@@ -371,13 +441,14 @@ try {
     const w = flat(await api(`/users/${uid}`)).wallet ?? 0;
     return w === saldoAwal + minta.amount ? w : null;
   }, "saldo bertambah setelah persetujuan admin");
-  ok("Petugas menyetujui → saldo bertambah", `Rp ${saldoAwal} → Rp ${sesudah}`);
+  ok("Admin menyetujui → saldo bertambah", `Rp ${saldoAwal} → Rp ${sesudah}`);
 
   const tuntas = (await listDocs("topups")).map(flat).find(t => t.uid === uid);
   if (tuntas.status !== "approved") throw new Error("permintaan tidak ditandai approved: " + tuntas.status);
   ok("Permintaan ditandai approved + penyetujunya tercatat", "handledBy=" + tuntas.handledBy);
 
-  await keluar();
+  await page.click(".adm-top button:has-text('Keluar'), button:has-text('Keluar')");
+  await page.waitForSelector(".auth-card", { timeout: 20000 });
   await masuk("pelanggan@quparkir.test");
 
   // Tautan/bookmark lama #/admin diarahkan ke Panel Admin berdiri sendiri

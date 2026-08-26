@@ -38,26 +38,89 @@ function item({ ic, t, s, href, onclick, kind = "" }) {
   ]);
 }
 
-// Modal top up: pilihan nominal cepat + nominal bebas, lalu bayar via QRIS.
+// Modal top up: nominal diketik lewat papan angka, lalu bayar via QRIS.
+//
+// TIDAK ADA nilai bawaan. Dulu kolomnya terisi "50000" sejak modal dibuka:
+// angka yang tidak pernah dipilih siapa pun, tapi terbaca seperti pilihan yang
+// sudah diambil — cukup menekan "Lanjut Bayar" sekali dan QR Rp 50.000 sudah
+// terbuka. Mulai dari nol memaksa nominalnya jadi keputusan sadar, dan itu
+// penting justru di sini: yang keluar uang sungguhan, dan salah nominal berarti
+// admin menerima mutasi yang tidak cocok dengan permintaan mana pun.
+//
+// Papan angka dipakai (bukan <input type=number>) karena alasan yang sama
+// dengan aplikasi dompet digital: papan ketik ponsel untuk angka menyodorkan
+// koma, titik, dan minus yang semuanya tidak sah di sini, dan tinggi papannya
+// menutupi nominal yang sedang diketik. Papan sendiri juga membuat "000" bisa
+// jadi satu tombol.
+const MAKS_DIGIT = String(TOPUP_MAX).length;
+
 function topUpModal(u) {
-  const inp = h("input.input", { type: "number", inputmode: "numeric", min: TOPUP_MIN, max: TOPUP_MAX, placeholder: "50000", value: "50000" });
+  let digit = "";
+  const nilai = () => Number(digit || "0");
+
+  const layar = h(".topup-amt", { text: rupiah(0) });
+  const petunjuk = h("p.topup-hint");
+  const lanjut = h("button.btn", { type: "button" }, "Lanjut Bayar");
   const chips = h(".topup-chips");
-  const paint = () => [...chips.children].forEach(c => {
-    const on = c.dataset.v === inp.value;
-    c.classList.toggle("active", on);
-    c.setAttribute("aria-pressed", on ? "true" : "false");
-  });
+
+  function paint() {
+    const n = nilai();
+    layar.textContent = rupiah(n);
+    layar.classList.toggle("nol", n === 0);
+
+    // Pesannya mengikuti apa yang sedang diketik, bukan menunggu tombol
+    // ditekan: "minimal Rp 10.000" berguna saat angkanya masih Rp 3.000,
+    // percuma kalau baru muncul setelah orang menekan Lanjut.
+    let pesan = `Minimal ${rupiah(TOPUP_MIN)} · maksimal ${rupiah(TOPUP_MAX)}`, salah = false;
+    if (n > 0 && n < TOPUP_MIN) { pesan = `Kurang dari minimal ${rupiah(TOPUP_MIN)}`; salah = true; }
+    else if (n > TOPUP_MAX) { pesan = `Melebihi maksimal ${rupiah(TOPUP_MAX)}`; salah = true; }
+    petunjuk.textContent = pesan;
+    petunjuk.classList.toggle("err", salah);
+
+    lanjut.disabled = !(n >= TOPUP_MIN && n <= TOPUP_MAX);
+    [...chips.children].forEach(c => {
+      const on = c.dataset.v === String(n);
+      c.classList.toggle("active", on);
+      c.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+
+  // Nol di depan dibuang supaya "007" tidak mungkin terbentuk, dan panjangnya
+  // dibatasi: tanpa itu orang bisa mengetik dua puluh digit dan layar hanya
+  // menampilkan angka yang tidak mungkin disetujui.
+  const tambah = (t) => { digit = (digit + t).replace(/^0+/, "").slice(0, MAKS_DIGIT); paint(); };
+  const hapus = () => { digit = digit.slice(0, -1); paint(); };
+  const setNilai = (n) => { digit = String(n); paint(); };
 
   NOMINAL.forEach(n => chips.append(
-    h("button", { type: "button", dataset: { v: String(n) }, text: rupiah(n), onclick: () => { inp.value = String(n); paint(); } })
+    h("button", { type: "button", dataset: { v: String(n) }, text: rupiah(n), onclick: () => setNilai(n) })
   ));
-  inp.addEventListener("input", paint);
-  paint();
+
+  const tombol = (label, aria, onclick, kelas = "") =>
+    h("button.topup-key" + kelas, { type: "button", "aria-label": aria, onclick }, label);
+
+  const pad = h(".topup-pad", {}, [
+    ...["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(d => tombol(d, d, () => tambah(d))),
+    tombol("000", "tiga nol", () => tambah("000"), ".sub"),
+    tombol("0", "0", () => tambah("0")),
+    tombol("⌫", "Hapus satu angka", hapus, ".sub"),
+  ]);
+
+  // Papan angka di layar tidak menggantikan papan ketik fisik: di desktop
+  // mengetik angka adalah hal pertama yang dicoba orang, dan modal yang
+  // mengabaikannya terasa rusak.
+  const keydown = (e) => {
+    if (e.key >= "0" && e.key <= "9") { tambah(e.key); e.preventDefault(); }
+    else if (e.key === "Backspace") { hapus(); e.preventDefault(); }
+    else if (e.key === "Enter" && !lanjut.disabled) { lanjut.click(); e.preventDefault(); }
+  };
+  document.addEventListener("keydown", keydown);
 
   const submit = async () => {
-    const amount = Number(inp.value);
+    const amount = nilai();
     if (!Number.isInteger(amount) || amount < TOPUP_MIN || amount > TOPUP_MAX)
       return toast(`Nominal harus bilangan bulat ${rupiah(TOPUP_MIN)} – ${rupiah(TOPUP_MAX)}`, "err");
+    document.removeEventListener("keydown", keydown);
     $("#modalHost").innerHTML = "";
 
     // QRIS merchant asli, tanpa simulator dan tanpa gateway. Saldo TIDAK
@@ -88,14 +151,21 @@ function topUpModal(u) {
       h("button.btn", { style: "margin-top:16px", onclick: () => { $("#modalHost").innerHTML = ""; render(); } }, "Mengerti"),
     ]));
   };
+  lanjut.onclick = submit;
 
+  paint();
   modal("Top Up QuPay", h("div", {}, [
-    h("p.muted", { style: "font-size:.8rem;font-weight:700;margin:2px 0 10px", text: "Pilih nominal" }),
+    h("p.topup-lbl", { text: "Nominal top up" }),
+    layar,
     chips,
-    h("label.field", {}, [h("span", { text: `Nominal lain (${rupiah(TOPUP_MIN)} – ${rupiah(TOPUP_MAX)})` }), inp]),
-    h("button.btn", { onclick: submit }, "Lanjut Bayar"),
-    h("p.center.muted", { style: "margin-top:10px", html: "<small>Pembayaran diproses lewat QRIS & e-wallet</small>" }),
-  ]));
+    pad,
+    lanjut,
+    petunjuk,
+  ]))
+    // Modal bisa ditutup lewat backdrop/Esc tanpa melewati submit() — listener
+    // papan ketik harus ikut dilepas, kalau tidak setiap angka yang diketik di
+    // halaman lain masih menyuntik modal yang sudah tidak ada.
+    .then(() => document.removeEventListener("keydown", keydown));
 }
 
 // Kartu saldo QuPay + aksi cepat.
@@ -173,12 +243,12 @@ export default async function akunPage(view) {
   const bal = petugas ? 0 : await Promise.resolve(DB.wallet.get(u.uid));
   const kartuSaldo = petugas ? null : balanceCard(u, bal);
 
-  // Persetujuan top up bagi PETUGAS. Admin tidak pernah sampai ke halaman ini
-  // — akun admin dialihkan ke /admin sebelum app sempat dirender (lihat
-  // alihkanAdmin di app.js), dan persetujuan top up untuknya ada sebagai tab
-  // tersendiri di panel itu.
+  // Antrean top up bagi PETUGAS — PANTAUAN saja, bukan persetujuan. Yang
+  // menyetujui hanya admin, di panel /admin (akun admin dialihkan ke sana
+  // sebelum app sempat dirender, lihat alihkanAdmin di app.js). Petugas
+  // membukanya untuk menjawab pengguna yang bertanya di lapangan.
   const konfirmasiTopUp = petugas
-    ? item({ ic: "💠", t: "Konfirmasi Top Up", s: "Setujui setelah uang masuk di merchant", onclick: () => go("#/topup") })
+    ? item({ ic: "💠", t: "Antrean Top Up", s: "Pantau permintaan yang menunggu admin", onclick: () => go("#/topup") })
     : null;
 
   const akunItems = petugas ? [
@@ -237,13 +307,13 @@ export default async function akunPage(view) {
   const unsubTunggu = kartuSaldo ? DB.topups.subscribeMine(u.uid, (l) => kartuSaldo.setMenunggu(l)) : null;
 
   // Persetujuan top up itu manual, artinya ada orang yang uangnya sudah keluar
-  // sedang menunggu. Jumlahnya ditempel di menu supaya terlihat tanpa harus
-  // membuka halamannya lebih dulu.
+  // sedang menunggu admin. Jumlahnya ditempel di menu supaya petugas tahu ada
+  // antrean tanpa harus membuka halamannya lebih dulu.
   const subT = konfirmasiTopUp?.querySelector(".s");
   const unsubAntre = konfirmasiTopUp ? DB.topups.subscribePending((l) => {
     subT.textContent = l.length
-      ? l.length + " permintaan menunggu persetujuan"
-      : "Setujui setelah uang masuk di merchant";
+      ? l.length + " permintaan menunggu admin"
+      : "Pantau permintaan yang menunggu admin";
     konfirmasiTopUp.classList.toggle("acc-antre", l.length > 0);
   }) : null;
 

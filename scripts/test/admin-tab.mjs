@@ -181,9 +181,9 @@ await page.click(".admin-tabs button:has-text('Banner')");
 await page.waitForSelector("h2:has-text('Banner Beranda')", { timeout: 10000 });
 await refreshDanPeriksa("Banner", "Banner Beranda");
 
-await page.click(".admin-tabs button:has-text('Export QRIS')");
+await page.click(".admin-tabs button:has-text('Export QR Code')");
 await page.waitForSelector("h2:has-text('QR Check-in per Lokasi')", { timeout: 10000 });
-await refreshDanPeriksa("Export QRIS", "QR Check-in per Lokasi");
+await refreshDanPeriksa("Export QR Code", "QR Check-in per Lokasi");
 await page.screenshot({ path: SHOT + "/admin-refresh-qris-final.png" });
 
 // --- hash tak dikenal → jatuh ke Ringkasan tanpa error ---

@@ -9,17 +9,19 @@ const env = await initializeTestEnvironment({
 });
 await env.clearFirestore();
 
-const ALI = "user-ali", BUD = "user-budi", PTG = "petugas-1", NOW = "user-nadia";
+const ALI = "user-ali", BUD = "user-budi", PTG = "petugas-1", NOW = "user-nadia", ADM = "admin-1";
 const ali = env.authenticatedContext(ALI).firestore();
 const budi = env.authenticatedContext(BUD).firestore();
 const ptg = env.authenticatedContext(PTG).firestore();
 const nad = env.authenticatedContext(NOW).firestore();
+const adm = env.authenticatedContext(ADM).firestore();
 
 await env.withSecurityRulesDisabled(async (c) => {
   const d = c.firestore();
   await setDoc(doc(d, "users", ALI), { name: "Ali", wallet: 25000 });
   await setDoc(doc(d, "users", BUD), { name: "Budi", wallet: 25000 });
   await setDoc(doc(d, "users", PTG), { name: "Petugas", role: "petugas" });
+  await setDoc(doc(d, "users", ADM), { name: "Admin", role: "admin" });
   await setDoc(doc(d, "users", NOW), { name: "Nadia" });   // profil TANPA field wallet
   const mk = (id, uid, type, jamLalu) => setDoc(doc(d, "sessions", id), {
     uid, vehicle: { type, plate: "AD 1234 XX" }, locationId: "loc-square", locationName: "Solo Square",
@@ -73,8 +75,13 @@ await t("Ali menaikkan saldonya sendiri → DITOLAK", assertFails(updateDoc(doc(
 await t("Ali menurunkan saldonya (bayar) → BOLEH", assertSucceeds(updateDoc(doc(ali, "users", ALI), { wallet: 23000 })));
 await t("Ali menyetel role admin → DITOLAK", assertFails(updateDoc(doc(ali, "users", ALI), { role: "admin" })));
 await t("Ali mengubah saldo Budi → DITOLAK", assertFails(updateDoc(doc(ali, "users", BUD), { wallet: 999999 })));
-await t("petugas menaikkan saldo Budi → BOLEH", assertSucceeds(updateDoc(doc(ptg, "users", BUD), { wallet: 75000 })));
-await t("petugas mengubah nama Budi → DITOLAK", assertFails(updateDoc(doc(ptg, "users", BUD), { name: "Diretas" })));
+// Menaikkan saldo = memberi uang. Sejak persetujuan top up jadi milik admin,
+// petugas tidak lagi boleh menyentuh wallet siapa pun: ponsel petugas yang
+// hilang atau akun petugas yang dibagi-pakai tidak boleh berarti saldo gratis.
+await t("admin menaikkan saldo Budi → BOLEH", assertSucceeds(updateDoc(doc(adm, "users", BUD), { wallet: 75000 })));
+await t("petugas menaikkan saldo Budi → DITOLAK", assertFails(updateDoc(doc(ptg, "users", BUD), { wallet: 999999 })));
+await t("admin menurunkan saldo Budi → DITOLAK", assertFails(updateDoc(doc(adm, "users", BUD), { wallet: 1000 })));
+await t("admin mengubah nama Budi → DITOLAK", assertFails(updateDoc(doc(adm, "users", BUD), { name: "Diretas" })));
 await t("Ali menulis activeSession → BOLEH", assertSucceeds(updateDoc(doc(ali, "users", ALI), { activeSession: "s-x" })));
 // Profil yang belum punya field 'wallet' berarti saldo NOL. Sampai 26 Agu 2026
 // default-nya 25000, jadi pemilik bisa "menurunkan" saldo dari 25.000 hantu ke
@@ -89,9 +96,13 @@ await t("Ali membuat permintaan pending → BOLEH", assertSucceeds(addDoc(collec
 await t("Ali membuat langsung approved → DITOLAK", assertFails(addDoc(collection(ali, "topups"), { uid: ALI, amount: 50000, method: "qris", status: "approved", createdAt: Date.now() })));
 await t("Ali membuat atas nama Budi → DITOLAK", assertFails(addDoc(collection(ali, "topups"), { uid: BUD, amount: 50000, method: "qris", status: "pending", createdAt: Date.now() })));
 await t("Ali menyetujui top up-nya sendiri → DITOLAK", assertFails(updateDoc(doc(ali, "topups", "t-ali"), { status: "approved", handledBy: ALI, handledAt: Date.now() })));
-await t("petugas menyetujui → BOLEH", assertSucceeds(updateDoc(doc(ptg, "topups", "t-ali"), { status: "approved", handledBy: PTG, handledAt: Date.now() })));
-await t("petugas menyetujui ulang (ganda) → DITOLAK", assertFails(updateDoc(doc(ptg, "topups", "t-ali"), { status: "approved", handledBy: PTG, handledAt: Date.now() })));
-await t("petugas mengubah nominal → DITOLAK", assertFails(updateDoc(doc(ptg, "topups", "t-ali2"), { status: "approved", amount: 999999, handledBy: PTG, handledAt: Date.now() })));
+await t("petugas menyetujui → DITOLAK", assertFails(updateDoc(doc(ptg, "topups", "t-ali"), { status: "approved", handledBy: PTG, handledAt: Date.now() })));
+await t("petugas menolak → DITOLAK", assertFails(updateDoc(doc(ptg, "topups", "t-ali"), { status: "rejected", handledBy: PTG, handledAt: Date.now() })));
+// Petugas tetap boleh MEMBACA: halaman #/topup di app hanya memantau antrean.
+await t("petugas membaca antrean → BOLEH", assertSucceeds(getDoc(doc(ptg, "topups", "t-ali"))));
+await t("admin menyetujui → BOLEH", assertSucceeds(updateDoc(doc(adm, "topups", "t-ali"), { status: "approved", handledBy: ADM, handledAt: Date.now() })));
+await t("admin menyetujui ulang (ganda) → DITOLAK", assertFails(updateDoc(doc(adm, "topups", "t-ali"), { status: "approved", handledBy: ADM, handledAt: Date.now() })));
+await t("admin mengubah nominal → DITOLAK", assertFails(updateDoc(doc(adm, "topups", "t-ali2"), { status: "approved", amount: 999999, handledBy: ADM, handledAt: Date.now() })));
 
 console.log("\n— TRANSAKSI —");
 const tx = (amount, sessionId = "s-tx") => ({ sessionId, uid: ALI, locationId: "loc-square", amount, method: "qris", paidAt: Date.now() });

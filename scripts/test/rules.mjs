@@ -185,7 +185,16 @@ await t("tamu: profil + kendaraan + checkin berjalan", async () => {
   await assertSucceeds(checkin(tamu, "tamu1", { vehicle: { plate: "AD 9 ZZ", type: "mobil", name: "" }, locationId: "loc-gede" }));
 });
 
-// 11. vehicles remove
+// 11. jejak audit pengelolaan petugas — HANYA server (Admin SDK).
+// Koleksi ini tidak punya match di firestore.rules, jadi yang diuji adalah
+// default-deny-nya: siapa pun yang bisa membacanya berarti bisa memetakan
+// akun petugas beserta siapa yang mengubah sandinya.
+await t("auditPetugas: admin sekalipun tidak bisa membacanya dari klien", () =>
+  assertFails(getDocs(collection(adm, "auditPetugas"))));
+await t("auditPetugas: klien tidak bisa menulis (memalsukan jejak)", () =>
+  assertFails(addDoc(collection(adm, "auditPetugas"), { aksi: "hapus", oleh: "pel1" })));
+
+// 12. vehicles remove
 await t("vehicles: hapus kendaraan", () =>
   assertSucceeds(deleteDoc(doc(pel, "users", "pel1", "vehicles", vehId))));
 

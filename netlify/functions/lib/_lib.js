@@ -313,7 +313,7 @@ export async function terapkanStatus(b) {
       // bersamaan tidak boleh saling menimpa.
       tx.set(userRef, { wallet: FieldValue.increment(o.amount) }, { merge: true });
       // Dicatat juga di /topups supaya muncul di riwayat pengguna dan di panel
-      // petugas — bentuknya sama seperti top up manual yang disetujui, hanya
+      // admin — bentuknya sama seperti top up manual yang disetujui, hanya
       // yang menyetujui adalah sistem.
       tx.set(db.collection("topups").doc(), {
         uid: o.uid,

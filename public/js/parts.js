@@ -203,3 +203,30 @@ export function pageHeader(title, { back = "#/home" } = {}) {
     ]),
   ]);
 }
+
+// ---------- Potongan panel admin ----------
+// Dipakai bersama admin-panel.js dan admin-petugas.js. Letaknya di sini,
+// bukan di salah satu dari keduanya, supaya tidak ada modul panel yang
+// mengimpor modul panel lain (impor melingkar: admin-panel memuat tab
+// Petugas, tab Petugas butuh baris daftarnya).
+
+// Baris daftar admin: isi di kiri, tombol aksi di kanan. Di layar sempit blok
+// aksi turun jadi baris sendiri selebar kartu (lihat .adm-item di admin.css)
+// supaya tombol tetap cukup besar untuk disentuh.
+export const admItem = (icon, body, actions = [], badge = null) =>
+  h(".adm-item", {}, [
+    h(".adm-main", {}, [h(".ic", { text: icon }), h(".adm-body", {}, body)]),
+    h(".adm-act", {}, [badge, ...actions]),
+  ]);
+
+// Konfirmasi hapus/aksi merusak — memakai modal() bawaan lewat hook _close-nya,
+// jadi menutup lewat latar (klik di luar) menghasilkan null = batal.
+export function confirmDialog(title, msg, { okText = "Hapus", danger = true } = {}) {
+  return modal(title, h("div", {}, [
+    h("p.s", { text: msg }),
+    h("div", { style: "display:flex;gap:10px;margin-top:14px" }, [
+      h("button.btn.ghost", { type: "button", style: "flex:1", onclick: (e) => e.target.closest(".modal")._close(false) }, "Batal"),
+      h("button.btn" + (danger ? ".danger" : ""), { type: "button", style: "flex:1", onclick: (e) => e.target.closest(".modal")._close(true) }, okText),
+    ]),
+  ]));
+}

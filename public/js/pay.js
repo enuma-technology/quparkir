@@ -75,8 +75,8 @@ export async function payQRIS({ amount, title = "Pembayaran QRIS", sessionId = n
 //
 // ⚠️ Batasnya harus jujur: QRIS statis tidak membawa order_id, jadi aplikasi
 // TIDAK bisa tahu sendiri uangnya sudah masuk. Tombol konfirmasi di bawah
-// adalah pernyataan pengguna, bukan bukti pembayaran — petugas tetap wajib
-// mencocokkan ke aplikasi merchant. Untuk rekonsiliasi otomatis dibutuhkan
+// adalah pernyataan pengguna, bukan bukti pembayaran — admin tetap wajib
+// mencocokkan ke aplikasi merchant sebelum menyetujui. Untuk rekonsiliasi otomatis dibutuhkan
 // QRIS dinamis terbitan PJP + webhook; lihat docs/PAYMENT-GOBIZ.md.
 function qrisMerchant({ amount, title }) {
   let payload;
@@ -322,7 +322,7 @@ const payMidtrans = ({ sessionId }) =>
 // topUpModal(). Jangan dihapus sebagai "kode mati".
 //
 // Hasil { server: true } berarti saldo SUDAH ditambah webhook — pemanggil
-// tidak perlu (dan tidak boleh) membuat permintaan /topups untuk petugas.
+// tidak perlu (dan tidak boleh) membuat permintaan /topups untuk admin.
 // MUNDUR berarti gateway tidak tersedia: pakai jalur lama.
 export async function topUpGateway({ amount }) {
   const hasil = await lewatGateway({ endpoint: "/create-topup", muatan: { amount } });

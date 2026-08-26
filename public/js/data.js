@@ -104,8 +104,8 @@ function demoBackend() {
       subscribe: (u, cb) => sub(x => x.wallet[u] ?? 25000, cb),
     },
     // Top up TIDAK menambah saldo sendiri — ia membuat permintaan yang harus
-    // dikonfirmasi petugas. Lihat firestore.rules: pemilik hanya boleh
-    // MENGURANGI users.wallet, menambah adalah hak petugas.
+    // dikonfirmasi ADMIN. Lihat firestore.rules: pemilik hanya boleh
+    // MENGURANGI users.wallet, menambah adalah hak admin (petugas tidak).
     topups: {
       create: (u, { amount, name }) => {
         const t = { id: randId(), uid: u, name: name || "", amount, method: "qris",
@@ -315,9 +315,10 @@ async function firebaseBackend() {
         const t = (await tx.get(ref)).data();
         if (!t) throw new Error("Permintaan top up tidak ditemukan.");
         if (t.status !== "pending") throw new Error("Permintaan ini sudah diproses.");
-        // increment() dan BUKAN baca-lalu-tulis: petugas tidak punya izin baca
+        // increment() dan BUKAN baca-lalu-tulis: admin pun tidak punya izin baca
         // users/{uid} (profil pelanggan tertutup), dan increment juga kebal
-        // terhadap perubahan saldo yang terjadi bersamaan.
+        // terhadap perubahan saldo yang terjadi bersamaan. Dipanggil dari panel
+        // admin saja — rules menolaknya bila pemanggilnya petugas.
         tx.update(doc(db, "users", t.uid), { wallet: increment(t.amount) });
         tx.update(ref, { status: "approved", handledBy: officerId, handledAt: Date.now() });
       }),

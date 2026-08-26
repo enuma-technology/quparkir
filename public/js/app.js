@@ -37,7 +37,9 @@ const TAB = {
   ],
   petugas: [
     { go: "#/petugas", ic: "🦺", t: "Petugas" },
-    { go: "#/topup", ic: "💠", t: "Top Up" },
+    // "Antrean", bukan "Konfirmasi": petugas hanya memantau — yang menyetujui
+    // top up hanya admin, di panel /admin.
+    { go: "#/topup", ic: "💠", t: "Antrean" },
     null,
     { go: "#/cari", ic: "🗺️", t: "Lokasi" },
     { go: "#/akun", ic: "👤", t: "Akun" },

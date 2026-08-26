@@ -3,9 +3,10 @@
 Menjalankan `firestore.rules` melawan Firestore Emulator dan memastikan
 lubang-lubang lama benar-benar tertutup — tarif tidak bisa dikarang dari
 browser, saldo tidak bisa dinaikkan sendiri, pengguna tidak bisa memverifikasi
-sesinya sendiri, permintaan top up tidak bisa disetujui oleh pemintanya, dan
-order pembayaran gateway (`/orders`) tidak bisa disetel 'paid' dari browser,
-dan petugas tidak bisa membuat sesi parkir atas nama siapa pun.
+sesinya sendiri, permintaan top up tidak bisa disetujui oleh pemintanya
+**maupun oleh petugas** (hanya admin), order pembayaran gateway (`/orders`)
+tidak bisa disetel 'paid' dari browser, dan petugas tidak bisa membuat sesi
+parkir atas nama siapa pun.
 
 ## Menjalankan
 
@@ -16,9 +17,9 @@ firebase emulators:start --only firestore --project quparkir
 # terminal 2
 cd scripts/rules-test
 npm init -y && npm i @firebase/rules-unit-testing firebase
-node rules.test.mjs   # 35 kasus izin
+node rules.test.mjs   # 42 kasus izin
 node tx.test.mjs      # checkout nyata: 4 dokumen dalam satu runTransaction
-node topup.test.mjs   # persetujuan top up nyata (increment saldo)
+node topup.test.mjs   # persetujuan top up nyata (increment saldo) — admin boleh, petugas tidak
 ```
 
 Ketiganya keluar dengan kode 1 bila ada yang gagal, jadi aman dipakai di CI.

@@ -191,13 +191,17 @@ const admHead = (aksi = false) => `<div class="skel-head">${line("w40")}${aksi ?
 export const ADMIN_TABS = [
   { id: "ringkasan", label: "📊 Ringkasan" },
   { id: "lokasi", label: "🅿️ Lokasi" },
-  // Persetujuan top up ada DI SINI, bukan hanya di app: sejak akun admin
-  // dialihkan keluar dari app.html (lihat alihkanAdmin di app.js), #/topup
-  // tidak lagi terjangkau olehnya. Petugas tetap memakai yang di app.
+  // Akun petugas dibuat & dikelola dari sini, lewat Netlify Function
+  // (kelola-petugas) — bukan langsung ke Firestore. Peran tidak boleh lahir
+  // dari browser: lihat catatan di admin-petugas.js.
+  { id: "petugas", label: "🦺 Petugas" },
+  // Persetujuan top up HANYA di sini. #/topup di app tinggal daftar pantauan
+  // untuk petugas — akun admin sendiri dialihkan keluar dari app.html (lihat
+  // alihkanAdmin di app.js), jadi rute itu memang tak terjangkau olehnya.
   { id: "topup", label: "💠 Top Up" },
   { id: "promo", label: "🎁 Promo" },
   { id: "banner", label: "📣 Banner" },
-  { id: "qris", label: "🧾 Export QRIS" },
+  { id: "qris", label: "🧾 Export QR Code" },
 ];
 
 // kop tetap: topbar + strip tab (selalu sama di semua tab). Tab yang aktif
@@ -254,6 +258,8 @@ const ADMIN_CONTENT = {
     </div>`,
   // judul + "+ Tambah" di kanan, baris keterangan, daftar CRUD
   lokasi: () => `<div class="adm-shell"><section class="skel-section">${admHead(true)}${line("w75")}${many(3, () => admItem())}</section></div>`,
+  // judul + "+ Tambah", catatan peringatan (dua baris), lalu daftar akun
+  petugas: () => `<div class="adm-shell"><section class="skel-section">${admHead(true)}${line("w75")}${line("w60")}${many(3, () => admItem())}</section></div>`,
   promo: () => `<div class="adm-shell"><section class="skel-section">${admHead(true)}${line("w75")}${many(3, () => admItem())}</section></div>`,
   banner: () => `<div class="adm-shell"><section class="skel-section">${admHead(true)}${line("w75")}${many(2, () => admItem())}</section></div>`,
   // grid QR per lokasi lalu blok QR kustom (textarea + tombol + pratinjau)

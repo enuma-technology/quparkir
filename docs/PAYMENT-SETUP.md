@@ -90,7 +90,7 @@ quparkir/
 >
 > | Bagian | Keadaan sebenarnya |
 > |---|---|
-> | **1a** `wallet` | Ditutup dengan cara lain: pemilik hanya boleh *mengurangi*; menambah adalah hak petugas lewat koleksi `/topups` |
+> | **1a** `wallet` | Ditutup dengan cara lain: pemilik hanya boleh *mengurangi*; menambah adalah hak **admin** lewat koleksi `/topups` |
 > | **1b** `transactions` | Belum baca-saja. Klien masih menulis, tapi nominalnya dicocokkan ke sesi yang dirujuk |
 > | **1c** `sessions.amount` | Ditutup: rules menghitung sendiri batas bawah tarif dari `checkinAt` + jam server |
 > | **1d** koleksi `orders` | ✅ Sudah ada sejak 25 Agu 2026 (baca-saja bagi klien, ditulis Admin SDK). Lima kasus ujinya di `scripts/rules-test/rules.test.mjs` |
@@ -294,7 +294,7 @@ Dua function tambahan yang tidak ada di panduan asli, keduanya menutup lubang
 
 | Function | Yang dikerjakan |
 |---|---|
-| `create-topup.js` | Order Snap untuk top up saldo. Saldo bertambah di **webhook**, bukan saat pengguna menekan tombol. Jalur lama (`/topups` + persetujuan petugas) tetap ada sebagai cadangan saat gateway mati. |
+| `create-topup.js` | Order Snap untuk top up saldo. Saldo bertambah di **webhook**, bukan saat pengguna menekan tombol. Jalur lama (`/topups` + persetujuan admin di panel `/admin`) tetap ada sebagai cadangan saat gateway mati. |
 | `wallet-checkout.js` | Bayar parkir dengan saldo, seluruhnya di server dalam **satu** `runTransaction()`: cek saldo, potong saldo, tutup sesi, catat transaksi, kembalikan slot, lepas `activeSession`. |
 
 Kenapa `wallet-checkout` perlu ada: sebelumnya browser menutup sesi lalu

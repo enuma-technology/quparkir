@@ -41,7 +41,7 @@ Ini yang paling penting sebelum menulis kode apa pun.
 
 | Alamat | Isinya | Dideploy oleh |
 |---|---|---|
-| `quparkir.web.app` | **terbaru** — QRIS merchant, rules baru, top up via petugas | Firebase CLI (dari komputer) |
+| `quparkir.web.app` | **terbaru** — QRIS merchant, rules baru, top up disetujui admin | Firebase CLI (dari komputer) |
 | `quparkir-pay.netlify.app` | **tertinggal di 9 Agustus** (`11e80f9`) | Netlify, dari `main` di GitHub |
 
 Keduanya menunjuk ke **Firestore yang sama**. Jadi salinan lama di Netlify itu
@@ -382,7 +382,7 @@ dan sudah ter-deploy serta lulus 33 uji di `scripts/rules-test/`:
 
 | Permintaan di PAYMENT-SETUP.md §1 | Keadaan sekarang |
 |---|---|
-| 1a — `wallet` jadi tulis-server-saja | **Sudah tertutup dengan cara lain.** Pemilik hanya boleh *mengurangi*; menambah adalah hak petugas lewat `/topups` |
+| 1a — `wallet` jadi tulis-server-saja | **Sudah tertutup dengan cara lain.** Pemilik hanya boleh *mengurangi*; menambah adalah hak **admin** lewat `/topups` (petugas tidak bisa) |
 | 1c — `sessions.amount` jangan disentuh klien | **Sudah tertutup.** Rules menghitung sendiri batas bawah tarif dari `checkinAt` + jam server |
 | 1b — `transactions` jadi baca-saja | **Sebagian.** Klien masih boleh menulis, tapi nominalnya dicocokkan ke sesi yang dirujuk |
 | 1d — koleksi baru `orders` | **Belum.** Ini memang butuh server, kerjakan bersama Langkah 7 |
